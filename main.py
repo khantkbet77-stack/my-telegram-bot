@@ -76,7 +76,13 @@ def setup_db():
     try:
         conn = get_conn()
         cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, name TEXT, username TEXT)")
+        
+        # ইউজার টেবিল তৈরি
+        cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, name TEXT)")
+        
+        # ডাটাবেসে username কলাম না থাকলে এই লাইনটি তা অটোমেটিক যোগ করে নেবে
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT")
+        
         cursor.execute("CREATE TABLE IF NOT EXISTS attendance (user_id BIGINT PRIMARY KEY, status TEXT, start_time TEXT, last_report_time TEXT, last_break_time TEXT)")
         cursor.execute("CREATE TABLE IF NOT EXISTS work_hours (user_id BIGINT, date TEXT, total_seconds INTEGER DEFAULT 0, UNIQUE(user_id, date))")
         cursor.execute("CREATE TABLE IF NOT EXISTS message_map (admin_msg_id BIGINT PRIMARY KEY, user_id BIGINT)")
