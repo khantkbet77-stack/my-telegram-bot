@@ -14,24 +14,23 @@ from flask import Flask
 BOT_TOKEN = "8636640934:AAHrh_jJhZoe5O46mfvMDrc0UJ3IWE4CXGI"  
 ADMIN_GROUP_ID = -1003984851079 
 
-# যারা অ্যাডমিন প্যানেল কন্ট্রোল করবে
+# অ্যাডমিন লিস্ট (এদের জন্য ওয়ার্নিং যাবে না)
 ALLOWED_ADMINS = ['bdhasan09', 'alexbd96', 'aminal041']
 ADMIN_MENTION = "@AlexBD96"
 
-# টপিক আইডি সমূহ 
+# টপিক আইডি 
 TOPIC_PAYMENT = 3       
 TOPIC_ATTENDANCE = 10   
 TOPIC_RECHARGE = 13     
 TOPIC_HOURLY = 88       
 TOPIC_LEAVE = 405       
 
-# আপনার ক্লাউড ডাটাবেস ইউআরএল (Neon DB)
 DB_URL = "postgresql://neondb_owner:npg_Efms7N5AzDZx@ep-fragrant-shape-aou3wk2j.c-2.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 # =======================================================
-# 🛡️ প্রয়োজনীয় ফাংশন সমূহ (Helper Functions)
+# 🛡️ প্রয়োজনীয় ফাংশন সমূহ
 # =======================================================
 def get_conn():
     return psycopg2.connect(DB_URL)
@@ -66,8 +65,7 @@ def get_user_name(user_id):
         conn.close()
         if res:
             return res[0]
-        else:
-            return "Unknown User"
+        return "Unknown User"
     except: 
         return "Unknown User"
 
@@ -78,7 +76,7 @@ def setup_db():
     try:
         conn = get_conn()
         cursor = conn.cursor()
-        cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, name TEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id BIGINT PRIMARY KEY, name TEXT, username TEXT)")
         cursor.execute("CREATE TABLE IF NOT EXISTS attendance (user_id BIGINT PRIMARY KEY, status TEXT, start_time TEXT, last_report_time TEXT, last_break_time TEXT)")
         cursor.execute("CREATE TABLE IF NOT EXISTS work_hours (user_id BIGINT, date TEXT, total_seconds INTEGER DEFAULT 0, UNIQUE(user_id, date))")
         cursor.execute("CREATE TABLE IF NOT EXISTS message_map (admin_msg_id BIGINT PRIMARY KEY, user_id BIGINT)")
@@ -99,10 +97,8 @@ def main_menu(user):
     markup.add("📊 Hourly Report", "💳 ডিপোজিট/উত্তোলন")
     markup.add("⏱️ Daily Attendance", "📱 Recharges")
     markup.add("🩺 SL-OFF-issue")
-    
     if is_admin(user): 
         markup.add("👑 Admin Panel")
-        
     return markup
 
 @bot.message_handler(commands=['start', 'menu'])
@@ -111,7 +107,6 @@ def start(message):
     if name != "Unknown User":
         bot.send_message(message.chat.id, f"👇 <b>আপনার মেনু:</b>", reply_markup=main_menu(message.from_user))
     else:
-        # নতুন আপডেট নোটিশসহ স্টার্ট মেসেজ
         msg = bot.send_message(message.chat.id, "👋 <b>স্বাগতম! বটটি আপডেট করা হয়েছে।</b>\nসিস্টেম ব্যবহারের জন্য আপনার <b>পুরো নাম</b> লিখে সেন্ড করুন।")
         bot.register_next_step_handler(msg, register)
 
@@ -120,20 +115,20 @@ def register(message):
         return
         
     clean_name = clean_text(message.text)
+    username = message.from_user.username.lower() if message.from_user.username else ""
     
     try:
         conn = get_conn()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO users (user_id, name) VALUES (%s, %s) ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name", (message.chat.id, clean_name))
+        cursor.execute("INSERT INTO users (user_id, name, username) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name, username = EXCLUDED.username", (message.chat.id, clean_name, username))
         conn.commit()
         conn.close()
-        
         bot.send_message(message.chat.id, f"🎊 রেজিস্ট্রেশন সফল! স্বাগতম <b>{clean_name}</b>।", reply_markup=main_menu(message.from_user))
     except: 
         bot.send_message(message.chat.id, "❌ রেজিস্ট্রেশনে সমস্যা হয়েছে।")
 
 # =======================================================
-# ✅ অ্যাকশন বাটন লজিক (Approve / Reject / Work)
+# ✅ অ্যাকশন বাটন (Approve / Reject / Work)
 # =======================================================
 def get_action_buttons(uid, show_work=True):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -148,7 +143,7 @@ def get_action_buttons(uid, show_work=True):
 @bot.callback_query_handler(func=lambda c: c.data.startswith('act_'))
 def handle_action_buttons(call):
     if not is_admin(call.from_user): 
-        return bot.answer_callback_query(call.id, "⛔ অনুমতি নেই! এটি শুধু অ্যাডমিনদের জন্য।")
+        return bot.answer_callback_query(call.id, "⛔ অনুমতি নেই!")
         
     parts = call.data.split('_')
     action = parts[1]
@@ -158,7 +153,6 @@ def handle_action_buttons(call):
     
     try:
         if action == 'wrk':
-            # Work এ ক্লিক করলে Approve আর Reject বাটন দেখাবে শুধু
             new_kb = get_action_buttons(uid, show_work=False)
             status_text = "\n\n⚙️ <b>Status:</b> <i>Working on it...</i>"
             
@@ -185,7 +179,7 @@ def handle_action_buttons(call):
             else: 
                 bot.edit_message_text(text=(msg.text or "").replace("Working on it...", "") + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
     except: 
-        bot.answer_callback_query(call.id, "অ্যাকশন আপডেট করতে এরর হয়েছে!")
+        bot.answer_callback_query(call.id, "অ্যাকশন এরর!")
 
 # =======================================================
 # ১. 📊 আওয়ারলি রিপোর্ট
@@ -195,8 +189,7 @@ def hourly(message):
     name = get_user_name(message.chat.id)
     fmt = f"Caller Name: {name}\nTotal Call  (D): \nTotal NSU (D):\nTotal Call (H) :\nTotal NSU (H):"
     
-    txt = f"📑 <b>নতুন আওয়ারলি রিপোর্ট</b>\n━━━━━━━━━━━━━━━━━━\n📢 নিচের বক্সে ক্লিক করে ফরম্যাটটি কপি করুন এবং <b>স্ক্রিনশটসহ</b> সাবমিট করুন:\n\n<code>{fmt}</code>"
-    msg = bot.send_message(message.chat.id, txt)
+    msg = bot.send_message(message.chat.id, f"📑 <b>নতুন আওয়ারলি রিপোর্ট</b>\n\n<code>{fmt}</code>\n\nস্ক্রিনশটসহ সাবমিট করুন।")
     bot.register_next_step_handler(msg, save_hourly)
 
 def save_hourly(message):
@@ -214,34 +207,32 @@ def save_hourly(message):
     try:
         c_match = re.search(r"Total Call \(H\)[^\d]*(\d+)", cap, re.IGNORECASE)
         n_match = re.search(r"Total NSU \(H\)[^\d]*(\d+)", cap, re.IGNORECASE)
-        if c_match: calls_h = int(c_match.group(1))
-        if n_match: nsu_h = int(n_match.group(1))
+        if c_match: 
+            calls_h = int(c_match.group(1))
+        if n_match: 
+            nsu_h = int(n_match.group(1))
     except: 
         pass
         
     now = bd_time()
-    time_now = now.strftime('%I:%M %p')
-    date_now = now.strftime("%Y-%m-%d")
-    
-    report = f"📊 <b>HOURLY REPORT</b>\n👤 <b>User:</b> {name}\n⏰ <b>Time:</b> {time_now}\n━━━━━━━━━━━━━━━━━━\n📝 <b>Details:</b>\n{cap}"
     
     try:
-        sent = bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=report, message_thread_id=TOPIC_HOURLY)
+        bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=f"📊 <b>HOURLY REPORT</b>\n👤 {name}\n⏰ {now.strftime('%I:%M %p')}\n\n{cap}", message_thread_id=TOPIC_HOURLY)
         
         conn = get_conn()
         cursor = conn.cursor()
         cursor.execute("UPDATE attendance SET last_report_time = %s WHERE user_id = %s", (now.strftime("%Y-%m-%d %H:%M:%S"), message.chat.id))
-        cursor.execute("INSERT INTO hourly_stats (user_id, date, time, calls_h, nsu_h) VALUES (%s, %s, %s, %s, %s)", (message.chat.id, date_now, time_now, calls_h, nsu_h))
-        cursor.execute("INSERT INTO reports_log (user_id, date, time, log) VALUES (%s, %s, %s, %s)", (message.chat.id, date_now, time_now, cap))
+        cursor.execute("INSERT INTO hourly_stats (user_id, date, time, calls_h, nsu_h) VALUES (%s, %s, %s, %s, %s)", (message.chat.id, now.strftime("%Y-%m-%d"), now.strftime('%I:%M %p'), calls_h, nsu_h))
+        cursor.execute("INSERT INTO reports_log (user_id, date, time, log) VALUES (%s, %s, %s, %s)", (message.chat.id, now.strftime("%Y-%m-%d"), now.strftime('%I:%M %p'), cap))
         conn.commit()
         conn.close()
         
-        bot.send_message(message.chat.id, "✅ আপনার রিপোর্ট জমা হয়েছে।")
+        bot.send_message(message.chat.id, "✅ রিপোর্ট জমা হয়েছে।")
     except: 
-        bot.send_message(message.chat.id, "❌ সার্ভার এরর হয়েছে।")
+        bot.send_message(message.chat.id, "❌ এরর হয়েছে।")
 
 # =======================================================
-# ২. 💳 ডিপোজিট/উত্তোলন (অ্যাডমিন মেনশনসহ)
+# ২. 💳 ডিপোজিট/উত্তোলন
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "💳 ডিপোজিট/উত্তোলন")
 def dep_with_menu(message):
@@ -250,13 +241,15 @@ def dep_with_menu(message):
         types.InlineKeyboardButton("📥 ডিপোজিট", callback_data="req_dep"), 
         types.InlineKeyboardButton("📤 উত্তোলন", callback_data="req_with")
     )
-    bot.send_message(message.chat.id, "💳 <b>রিকুয়েস্ট ধরন সিলেক্ট করুন:</b>", reply_markup=kb)
+    bot.send_message(message.chat.id, "💳 রিকুয়েস্ট ধরন সিলেক্ট করুন:", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data in ['req_dep', 'req_with'])
 def handle_dep_with(call):
-    try: bot.answer_callback_query(call.id)
-    except: pass
-    
+    try: 
+        bot.answer_callback_query(call.id)
+    except: 
+        pass
+        
     is_dep = (call.data == "req_dep")
     
     if is_dep:
@@ -264,8 +257,7 @@ def handle_dep_with(call):
     else:
         fmt = "ইউজার নাম: \nমোবাইল নাম্বার: \nলেনদেন আইডি: \nঅ্যামাউন্ট: \nনোট: "
         
-    txt = f"💳 <b>{'ডিপোজিট' if is_dep else 'উত্তোলন'} রিকোয়েস্ট</b>\n━━━━━━━━━━━━━━━━━━\n📢 ফরম্যাটটি কপি করে পূরণ করুন:\n\n<code>{fmt}</code>"
-    msg = bot.send_message(call.message.chat.id, txt)
+    msg = bot.send_message(call.message.chat.id, f"💳 {'ডিপোজিট' if is_dep else 'উত্তোলন'}\n\n<code>{fmt}</code>")
     bot.register_next_step_handler(msg, lambda m: save_transaction(m, "DEPOSIT" if is_dep else "WITHDRAWAL"))
 
 def save_transaction(message, req_type):
@@ -273,14 +265,12 @@ def save_transaction(message, req_type):
         return
         
     if req_type == "DEPOSIT" and not message.photo: 
-        return bot.send_message(message.chat.id, "❌ স্ক্রিনশট ছাড়া রিকোয়েস্ট হবে না।")
+        return bot.send_message(message.chat.id, "❌ স্ক্রিনশট লাগবে।")
         
     name = get_user_name(message.chat.id)
     cap = clean_text(message.caption if message.photo else message.text)
     
-    # ডিপোজিট এবং উত্তোলন দুই জায়গাতেই ADMIN_MENTION যুক্ত করা হয়েছে
-    report = f"💰 <b>{req_type} REQUEST</b>\n👤 <b>User:</b> {name}\n📢 <b>Admin:</b> {ADMIN_MENTION}\n📝 <b>Details:</b>\n{cap}"
-    
+    report = f"💰 <b>{req_type} REQUEST</b>\n👤 User: {name}\n📢 <b>Admin:</b> {ADMIN_MENTION}\n📝 Details:\n{cap}"
     act_kb = get_action_buttons(message.chat.id)
     
     try:
@@ -294,7 +284,7 @@ def save_transaction(message, req_type):
         bot.send_message(message.chat.id, "❌ এরর হয়েছে।")
 
 # =======================================================
-# ৩. ⏱️ এটেনডেন্স (সঠিক টাইম হিসাবসহ)
+# ৩. ⏱️ এটেনডেন্স (সঠিক টাইম হিসাব)
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "⏱️ Daily Attendance")
 def attend_menu(message):
@@ -305,21 +295,21 @@ def attend_menu(message):
     )
     kb.add(types.InlineKeyboardButton("🔴 ডিউটি শেষ", callback_data="pw"))
     
-    bot.send_message(message.chat.id, "⏱️ <b>এটেনডেন্স প্যানেল</b>", reply_markup=kb)
+    bot.send_message(message.chat.id, "⏱️ এটেনডেন্স প্যানেল", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data in ['sw', 'bw', 'pw'])
 def attend_call(call):
-    try: bot.answer_callback_query(call.id, "প্রসেস হচ্ছে...")
-    except: pass
-    
+    try: 
+        bot.answer_callback_query(call.id, "প্রসেস হচ্ছে...")
+    except: 
+        pass
+        
     uid = call.message.chat.id
     name = get_user_name(uid)
     now = bd_time()
     
     t_str = now.strftime("%Y-%m-%d %H:%M:%S")
     d_str = now.strftime("%Y-%m-%d")
-    disp_time = now.strftime('%I:%M %p')
-    display_date = now.strftime("%d %B %Y")
     
     conn = get_conn()
     cursor = conn.cursor()
@@ -334,85 +324,65 @@ def attend_call(call):
         if c_status == 'working':
             bot.send_message(uid, "⚠️ আপনি ইতিমধ্যেই কাজে অ্যাক্টিভ আছেন!")
         else:
-            msg = "🟢 <b>Duty Resumed (বিরতি থেকে ফিরলো)</b>" if c_status == 'break' else "🟢 <b>Duty Started</b>"
-            
+            msg = "🟢 <b>Duty Resumed (ফিরলো)</b>" if c_status == 'break' else "🟢 <b>Duty Started</b>"
             cursor.execute("UPDATE attendance SET status='working', start_time=%s, last_report_time=%s WHERE user_id=%s", (t_str, t_str, uid))
-            bot.send_message(ADMIN_GROUP_ID, f"{msg}\n━━━━━━━━━━━━━━━━━━\n👤 <b>Name:</b> {name}\n⏰ <b>Time:</b> {disp_time}\n📅 <b>Date:</b> {display_date}", message_thread_id=TOPIC_ATTENDANCE)
-            bot.edit_message_text("✅ <b>আপনার ডিউটি শুরু হয়েছে!</b> (কাজের মিটার চালু)", uid, call.message.message_id)
+            bot.send_message(ADMIN_GROUP_ID, f"{msg}\n👤 {name}\n⏰ {now.strftime('%I:%M %p')}", message_thread_id=TOPIC_ATTENDANCE)
+            bot.edit_message_text("✅ ডিউটি শুরু হয়েছে।", uid, call.message.message_id)
             
     elif call.data == 'bw':
-        if c_status == 'break':
-            bot.send_message(uid, "⚠️ আপনি ইতিমধ্যেই বিরতিতে আছেন!")
-        elif c_status == 'stopped':
-            bot.send_message(uid, "⚠️ আপনি এখনো ডিউটি শুরু করেননি!")
-        else:
+        if c_status == 'working':
             try:
                 st = datetime.strptime(s_str, "%Y-%m-%d %H:%M:%S")
                 sec = max(int((now - st).total_seconds()), 0)
-                
                 cursor.execute("INSERT INTO work_hours (user_id, date, total_seconds) VALUES (%s, %s, 0) ON CONFLICT (user_id, date) DO NOTHING", (uid, d_str))
                 cursor.execute("UPDATE work_hours SET total_seconds = total_seconds + %s WHERE user_id=%s AND date=%s", (sec, uid, d_str))
             except: 
                 pass
                 
             cursor.execute("UPDATE attendance SET status='break', last_break_time=%s WHERE user_id=%s", (t_str, uid))
-            bot.send_message(ADMIN_GROUP_ID, f"⏸️ <b>Break Taken (বিরতি শুরু)</b>\n━━━━━━━━━━━━━━━━━━\n👤 <b>Name:</b> {name}\n⏰ <b>Time:</b> {disp_time}", message_thread_id=TOPIC_ATTENDANCE)
-            bot.edit_message_text("✅ <b>আপনার বিরতি শুরু হয়েছে!</b> (কাজের মিটার পজ)", uid, call.message.message_id)
+            bot.send_message(ADMIN_GROUP_ID, f"⏸️ <b>Break Taken</b>\n👤 {name}\n⏰ {now.strftime('%I:%M %p')}", message_thread_id=TOPIC_ATTENDANCE)
+            bot.edit_message_text("✅ বিরতি শুরু হয়েছে।", uid, call.message.message_id)
             
     elif call.data == 'pw':
-        if c_status == 'stopped':
-            bot.send_message(uid, "⚠️ আপনার ডিউটি আগেই শেষ হয়েছে!")
-        else:
-            if c_status == 'working':
-                try:
-                    st = datetime.strptime(s_str, "%Y-%m-%d %H:%M:%S")
-                    sec = max(int((now - st).total_seconds()), 0)
-                    
-                    cursor.execute("INSERT INTO work_hours (user_id, date, total_seconds) VALUES (%s, %s, 0) ON CONFLICT (user_id, date) DO NOTHING", (uid, d_str))
-                    cursor.execute("UPDATE work_hours SET total_seconds = total_seconds + %s WHERE user_id=%s AND date=%s", (sec, uid, d_str))
-                except: 
-                    pass
-                    
-            cursor.execute("UPDATE attendance SET status='stopped' WHERE user_id=%s", (uid,))
-            bot.send_message(ADMIN_GROUP_ID, f"🔴 <b>Duty Ended (ডিউটি শেষ)</b>\n━━━━━━━━━━━━━━━━━━\n👤 <b>Name:</b> {name}\n⏰ <b>Time:</b> {disp_time}\n📅 <b>Date:</b> {display_date}", message_thread_id=TOPIC_ATTENDANCE)
-            bot.edit_message_text("✅ <b>আপনার ডিউটি শেষ হয়েছে।</b> (সারাদিনের কাজ সেভড)", uid, call.message.message_id)
-            
+        if c_status == 'working':
+            try:
+                st = datetime.strptime(s_str, "%Y-%m-%d %H:%M:%S")
+                sec = max(int((now - st).total_seconds()), 0)
+                cursor.execute("INSERT INTO work_hours (user_id, date, total_seconds) VALUES (%s, %s, 0) ON CONFLICT (user_id, date) DO NOTHING", (uid, d_str))
+                cursor.execute("UPDATE work_hours SET total_seconds = total_seconds + %s WHERE user_id=%s AND date=%s", (sec, uid, d_str))
+            except: 
+                pass
+                
+        cursor.execute("UPDATE attendance SET status='stopped' WHERE user_id=%s", (uid,))
+        bot.send_message(ADMIN_GROUP_ID, f"🔴 <b>Duty Ended</b>\n👤 {name}\n⏰ {now.strftime('%I:%M %p')}", message_thread_id=TOPIC_ATTENDANCE)
+        bot.edit_message_text("✅ ডিউটি শেষ হয়েছে।", uid, call.message.message_id)
+        
     conn.commit()
     conn.close()
 
 # =======================================================
-# ৪. 📱 Recharges (With Action Buttons)
+# ৪. 📱 Recharges / ৫. SL-OFF
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "📱 Recharges")
 def recharge_app(message):
     fmt = "তারিখ: \nপেমেন্ট সিস্টেম: \nএমাউন্টও: "
-    txt = f"📱 <b>রিচার্জ রিকোয়েস্ট</b>\n━━━━━━━━━━━━━━━━━━\n📢 ফরম্যাটটি কপি করে পূরণ করুন। <b>স্ক্রিনশটসহ</b> সাবমিট করুন:\n\n<code>{fmt}</code>"
-    
-    msg = bot.send_message(message.chat.id, txt)
+    msg = bot.send_message(message.chat.id, f"📱 <b>Recharge</b>\n\n<code>{fmt}</code>\n\nস্ক্রিনশটসহ দিন।")
     bot.register_next_step_handler(msg, save_recharge)
 
 def save_recharge(message):
-    if is_cmd(message): 
-        return
-        
-    if not message.photo: 
+    if is_cmd(message) or not message.photo: 
         return bot.send_message(message.chat.id, "❌ স্ক্রিনশট বাধ্যতামূলক।")
         
     name = get_user_name(message.chat.id)
     cap = clean_text(message.caption)
     act_kb = get_action_buttons(message.chat.id)
     
-    report = f"📱 <b>RECHARGE</b>\n👤 {name}\n📝 {cap}"
-    
     try:
-        bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=report, reply_markup=act_kb, message_thread_id=TOPIC_RECHARGE)
-        bot.send_message(message.chat.id, "✅ রিচার্জ রিকোয়েস্ট পাঠানো হয়েছে।")
+        bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=f"📱 <b>RECHARGE</b>\n👤 {name}\n📝 {cap}", reply_markup=act_kb, message_thread_id=TOPIC_RECHARGE)
+        bot.send_message(message.chat.id, "✅ পাঠানো হয়েছে।")
     except: 
-        bot.send_message(message.chat.id, "❌ সার্ভার এরর!")
+        pass
 
-# =======================================================
-# ৫. 🩺 SL-OFF-issue (With Action Buttons)
-# =======================================================
 @bot.message_handler(func=lambda m: m.text == "🩺 SL-OFF-issue")
 def leave_menu(message):
     kb = types.InlineKeyboardMarkup(row_width=1)
@@ -421,7 +391,7 @@ def leave_menu(message):
         types.InlineKeyboardButton("⏳ অতিরিক্ত বিরতি সময়", callback_data="lv_extra"), 
         types.InlineKeyboardButton("🆘 ইমারজেন্সি কাজ", callback_data="lv_emg")
     )
-    bot.send_message(message.chat.id, "🩺 <b>ধরন সিলেক্ট করুন:</b>", reply_markup=kb)
+    bot.send_message(message.chat.id, "🩺 ধরন সিলেক্ট করুন:", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('lv_'))
 def handle_leave(call):
@@ -435,12 +405,7 @@ def handle_leave(call):
         f = "তারিখ: \nকারণ: \nডকুমেন্টস: "
         m = "EMERGENCY WORK"
         
-    txt = f"📝 <b>{m}</b>\n━━━━━━━━━━━━━━━━━━\nকপি করে পূরণ করুন:\n\n<code>{f}</code>"
-    
-    if m == "EMERGENCY WORK": 
-        txt += "\n\n(স্ক্রিনশট বাধ্যতামূলক)"
-        
-    msg = bot.send_message(call.message.chat.id, txt)
+    msg = bot.send_message(call.message.chat.id, f"📝 {m}\n\n<code>{f}</code>" + ("\n(স্ক্রিনশট বাধ্যতামূলক)" if m == "EMERGENCY WORK" else ""))
     bot.register_next_step_handler(msg, lambda ms: save_leave(ms, m))
 
 def save_leave(message, mode):
@@ -452,10 +417,9 @@ def save_leave(message, mode):
         
     name = get_user_name(message.chat.id)
     cap = clean_text(message.caption if message.photo else message.text)
-    
-    report = f"🩺 <b>{mode}</b>\n👤 <b>User:</b> {name}\n📢 <b>Admin:</b> {ADMIN_MENTION}\n📝 <b>Details:</b>\n{cap}"
-    
     act_kb = get_action_buttons(message.chat.id)
+    
+    report = f"🩺 <b>{mode}</b>\n👤 {name}\n📢 {ADMIN_MENTION}\n📝 {cap}"
     
     try:
         if message.photo: 
@@ -463,12 +427,12 @@ def save_leave(message, mode):
         else: 
             bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE)
             
-        bot.send_message(message.chat.id, "✅ অ্যাডমিনকে জানানো হয়েছে।")
+        bot.send_message(message.chat.id, "✅ পাঠানো হয়েছে।")
     except: 
         pass
 
 # =======================================================
-# 👑 ৬. অ্যাডমিন প্যানেল
+# 👑 অ্যাডমিন প্যানেল ও প্রমোশন
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
 def admin_panel_menu(message):
@@ -482,9 +446,9 @@ def admin_panel_menu(message):
         types.InlineKeyboardButton("👤 ইউজার ম্যানেজমেন্ট", callback_data="adm_manage"), 
         types.InlineKeyboardButton("📢 প্রমোশন মেসেজ", callback_data="adm_promo"), 
         types.InlineKeyboardButton("💬 মেনশন মেসেজ", callback_data="adm_mention"), 
-        types.InlineKeyboardButton("📢 আপডেট নোটিশ পাঠান (নতুন)", callback_data="adm_upd_not")
+        types.InlineKeyboardButton("📢 আপডেট নোটিশ পাঠান", callback_data="adm_upd_not")
     )
-    bot.send_message(message.chat.id, "👑 <b>অ্যাডমিন প্যানেল:</b>", reply_markup=kb)
+    bot.send_message(message.chat.id, "👑 অ্যাডমিন প্যানেল:", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("adm_"))
 def handle_adm_callback(call):
@@ -492,7 +456,7 @@ def handle_adm_callback(call):
         return
         
     if call.data == "adm_upd_not":
-        msg = bot.send_message(call.message.chat.id, "📢 আপডেট নোটিশটি লিখুন (যেমন: বট আপডেট হয়েছে, /start দিয়ে নাম সেট করুন):")
+        msg = bot.send_message(call.message.chat.id, "📢 আপডেট নোটিশটি লিখুন:")
         bot.register_next_step_handler(msg, broadcast_promo)
         
     elif call.data == "adm_mention":
@@ -509,7 +473,7 @@ def handle_adm_callback(call):
         bot.edit_message_text("💬 কাকে মেনশন করবেন?", call.message.chat.id, call.message.message_id, reply_markup=kb)
         
     elif call.data == "adm_best":
-        msg = bot.send_message(call.message.chat.id, "🏆 <b>গতকালকের</b> সেরা পারফর্মারের নাম ও ডিটেইলস লিখুন (ছবিসহ দিতে পারেন):")
+        msg = bot.send_message(call.message.chat.id, "🏆 <b>গতকালকের</b> সেরা পারফর্মার লিখুন (ছবিসহ দিতে পারেন):")
         bot.register_next_step_handler(msg, broadcast_best)
         
     elif call.data == "adm_promo":
@@ -643,12 +607,10 @@ def rpt_final(call):
     h = s // 3600
     m = (s % 3600) // 60
     
-    report_txt = f"📊 <b>Report: {n}</b>\n━━━━━━━━━━━━━━━━━━\n⏳ মোট কাজ: {h} ঘণ্টা {m} মিনিট\n📑 Hourly: {st[2]} বার\n📞 Calls: {st[0]} | 📉 NSU: {st[1]}"
-    
-    bot.edit_message_text(report_txt, call.message.chat.id, call.message.message_id)
+    bot.edit_message_text(f"📊 <b>Report: {n}</b>\n⏳ মোট কাজ: {h} ঘণ্টা {m} মিনিট\n📑 Hourly: {st[2]} বার\n📞 Calls: {st[0]} | 📉 NSU: {st[1]}", call.message.chat.id, call.message.message_id)
 
 # =======================================================
-# ⏰ অটোমেশন (Alerts & Warnings)
+# ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম
 # =======================================================
 def automation():
     best_alert = False
@@ -658,7 +620,7 @@ def automation():
         try:
             now = bd_time()
             
-            # সকাল ৯ টায় বেস্ট পারফর্মার অ্যালার্ট (গতকালকের)
+            # সকাল ৯টায় বেস্ট পারফর্মার অ্যালার্ট
             if now.hour == 9 and now.minute == 0 and not best_alert:
                 bot.send_message(ADMIN_GROUP_ID, f"🔔 {ADMIN_MENTION} <b>গতকালকের Best Performer</b> ঘোষণার সময় হয়েছে।")
                 best_alert = True
@@ -667,7 +629,7 @@ def automation():
                 best_alert = False
                 greet = {"m": False, "a": False, "e": False}
 
-            # প্রতিদিনের শুভেচ্ছা বার্তা
+            # শুভেচ্ছা বার্তা
             if now.hour == 8 and not greet["m"]: 
                 send_to_all("☀️ <b>শুভ সকাল!</b>\nকাজে মন দিন এবং আজকের লক্ষ্য পূরণ করুন। 🚀")
                 greet["m"] = True
@@ -680,75 +642,55 @@ def automation():
                 send_to_all("🌆 <b>শুভ সন্ধ্যা!</b>\nপেশাদারিত্বের সাথে পরিশ্রম চালিয়ে যান। ✨")
                 greet["e"] = True
 
-            # বিরতি ও ডিউটি অ্যালার্ট / ওয়ার্নিং চেক করা
+            # ওয়ার্নিং ও অ্যালার্ট
             conn = get_conn()
             cur = conn.cursor()
-            cur.execute("SELECT user_id, status, last_break_time, start_time, last_report_time FROM attendance")
+            cur.execute("SELECT a.user_id, a.status, a.last_break_time, a.start_time, a.last_report_time, u.name, u.username FROM attendance a JOIN users u ON a.user_id = u.user_id")
             rows = cur.fetchall()
             
-            for u, s, lb, st, lr in rows:
-                name = get_user_name(u)
+            for u, s, lb, st, lr, name, username in rows:
+                is_u_admin = username is not None and username.lower() in ALLOWED_ADMINS
                 
-                # বিরতি ওয়ার্নিং
-                if s == 'break' and lb:
-                    diff = (now - datetime.strptime(lb, "%Y-%m-%d %H:%M:%S")).total_seconds()
-                    
-                    if 3000 <= diff <= 3060: 
-                        try: bot.send_message(u, "🔔 বিরতির ৫০ মিনিট পূর্ণ হয়েছে। কাজে ফেরার সময় হয়েছে। 😊")
-                        except: pass
+                # ওয়ার্নিং শুধু নন-অ্যাডমিনদের জন্য
+                if not is_u_admin:
+                    if s == 'break' and lb:
+                        diff = (now - datetime.strptime(lb, "%Y-%m-%d %H:%M:%S")).total_seconds()
                         
-                    if 3600 <= diff <= 3660: 
-                        try: bot.send_message(ADMIN_GROUP_ID, f"⚠️ <b>Warning:</b> {name} ১ ঘণ্টার বেশি সময় ধরে বিরতিতে আছেন!")
-                        except: pass
-                        
-                # আওয়ারলি রিপোর্ট ওয়ার্নিং
-                if s == 'working' and lr:
-                    diff_report = (now - datetime.strptime(lr, "%Y-%m-%d %H:%M:%S")).total_seconds()
-                    
-                    if 4500 <= diff_report <= 4560: # ১ ঘণ্টা ১৫ মিনিট
-                        try: bot.send_message(ADMIN_GROUP_ID, f"⚠️ <b>Warning:</b> {name} ১ ঘণ্টা ১৫ মিনিট ধরে কোনো রিপোর্ট দেননি!")
-                        except: pass
-                        
-                # রাত ১০ টায় ডিউটি শেষ অ্যালার্ট (যারা সকাল ১০ টায় শুরু করেছে)
-                if s == 'working' and st and now.hour == 22 and now.minute == 0:
-                    start_time_obj = datetime.strptime(st, "%Y-%m-%d %H:%M:%S")
-                    
-                    if start_time_obj.hour == 10: 
-                        is_adm = False
-                        try:
-                            if bot.get_chat_member(ADMIN_GROUP_ID, u).status in ['administrator', 'creator']: 
-                                is_adm = True
-                        except: pass
-                        
-                        if not is_adm:
-                            try: bot.send_message(u, "📢 সময় শেষ! শেষ রিপোর্ট দিয়ে ডিউটি শেষ করুন।")
-                            except: pass
+                        if 3000 <= diff <= 3060: 
+                            bot.send_message(u, "🔔 বিরতির ৫০ মিনিট পূর্ণ হয়েছে। কাজে ফেরার সময় হয়েছে। 😊")
+                        if 3600 <= diff <= 3660: 
+                            bot.send_message(ADMIN_GROUP_ID, f"⚠️ <b>Warning:</b> {name} ১ ঘণ্টার বেশি সময় ধরে বিরতিতে!")
+                            
+                    if s == 'working' and lr:
+                        if (now - datetime.strptime(lr, "%Y-%m-%d %H:%M:%S")).total_seconds() >= 4500: # ১ ঘণ্টা ১৫ মিনিট
+                            bot.send_message(ADMIN_GROUP_ID, f"⚠️ <b>Warning:</b> {name} ১ ঘণ্টা ১৫ মিনিট ধরে রিপোর্ট দেননি!")
+                            
+                    if s == 'working' and st and now.hour == 22 and now.minute == 0:
+                        if datetime.strptime(st, "%Y-%m-%d %H:%M:%S").hour == 10: 
+                            bot.send_message(u, "📢 সময় শেষ! শেষ রিপোর্ট দিয়ে ডিউটি শেষ করুন।")
                             
             conn.close()
             time.sleep(60)
-            
-        except Exception as e: 
-            print("Automation Error:", e)
+        except: 
             time.sleep(60)
 
 threading.Thread(target=automation, daemon=True).start()
 
 # =======================================================
-# 🌐 ফ্লাস্ক রানার (Keep-Alive)
+# 🌐 রানার
 # =======================================================
 app = Flask(__name__)
 
 @app.route('/')
 def home(): 
-    return "🤖 Bot is Online with Neon DB & Actions!"
+    return "🤖 Bot is Online with Neon DB & Admin Protection!"
 
 def run_bot():
     bot.remove_webhook()
     while True:
         try: 
             bot.infinity_polling(timeout=20, skip_pending=True)
-        except Exception as e: 
-            print("Bot Polling Error:", e)
+        except: 
             time.sleep(5)
 
 threading.Thread(target=run_bot, daemon=True).start()
