@@ -589,7 +589,7 @@ def admin_panel_menu(message):
         types.InlineKeyboardButton("📢 প্রমোশন মেসেজ", callback_data="adm_promo"), 
         types.InlineKeyboardButton("💬 মেনশন মেসেজ", callback_data="adm_mention"), 
         types.InlineKeyboardButton("📢 আপডেট নোটিশ পাঠান", callback_data="adm_upd_not"),
-        types.InlineKeyboardButton("📱 রিচার্জ রিপোর্ট", callback_data="adm_rech_menu")
+        types.InlineKeyboardButton("📱 রিচার্জ রিপোর্ট", callback_data="rech_main_menu")
     )
     bot.send_message(message.chat.id, "👑 অ্যাডমিন প্যানেল:", reply_markup=kb)
 
@@ -756,7 +756,7 @@ def rpt_final(call):
     # =======================================================
 # 📱 রিচার্জ রিপোর্ট সেকশন (Recharge Report Logic)
 # =======================================================
-@bot.callback_query_handler(func=lambda c: c.data == "adm_rech_menu")
+@bot.callback_query_handler(func=lambda c: c.data == "rech_main_menu")
 def adm_rech_menu(call):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(types.InlineKeyboardButton("👥 সবার রিপোর্ট (চলতি মাস)", callback_data="rech_all"))
