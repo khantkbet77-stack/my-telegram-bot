@@ -185,6 +185,9 @@ def handle_action_buttons(call):
     admin_name = call.from_user.first_name
     msg = call.message
     
+    # যে টপিকে ক্লিক করা হয়েছে, সেটার আইডি বের করা
+    thread_id = msg.message_thread_id
+    
     try:
         if action == 'wrk':
             new_kb = get_action_buttons(uid, show_work=False)
@@ -208,8 +211,12 @@ def handle_action_buttons(call):
                 bot.edit_message_text(text=clean_text_content + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
                 
         elif action == 'rej':
-            # রিজেক্ট করার কারণ চাওয়ার লজিক
-            prompt_msg = bot.send_message(call.message.chat.id, f"⚠️ <b>{admin_name}</b>, দয়া করে রিকোয়েস্টটি রিজেক্ট করার কারণ লিখে সেন্ড করুন (না দিতে চাইলে 'Skip' লিখুন):")
+            # রিজেক্ট করার কারণ চাওয়ার লজিক - এখন নির্দিষ্ট টপিকেই মেসেজ যাবে!
+            prompt_msg = bot.send_message(
+                call.message.chat.id, 
+                f"⚠️ <b>{admin_name}</b>, দয়া করে রিকোয়েস্টটি রিজেক্ট করার কারণ লিখে সেন্ড করুন (না দিতে চাইলে 'Skip' লিখুন):",
+                message_thread_id=thread_id
+            )
             bot.register_next_step_handler(prompt_msg, process_rejection_reason, uid, msg, admin_name, prompt_msg.message_id)
             
     except Exception as e:
@@ -260,7 +267,7 @@ def process_rejection_reason(message, uid, original_msg, admin_name, prompt_msg_
         bot.delete_message(message.chat.id, prompt_msg_id)
     except Exception as e:
         pass
-
+        
 # =======================================================
 # ১. 📊 আওয়ারলি রিপোর্ট
 # =======================================================
