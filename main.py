@@ -159,7 +159,7 @@ def register(message):
         bot.send_message(message.chat.id, "❌ রেজিস্ট্রেশনে সমস্যা হয়েছে।")
 
 # =======================================================
-# ✅ অ্যাকশন বাটন (Approve / Reject / Work)
+# ✅ অ্যাকশন বাটন লজিক (Approve / Reject / Work)
 # =======================================================
 def get_action_buttons(uid, show_work=True):
     kb = types.InlineKeyboardMarkup(row_width=2)
@@ -198,22 +198,68 @@ def handle_action_buttons(call):
         elif action == 'app':
             bot.send_message(uid, "✅ <b>আপনার রিকোয়েস্টটি অ্যাডমিন দ্বারা Approve করা হয়েছে!</b>")
             final_text = "\n\n✅ <b>Status:</b> Approved by " + admin_name
+            work_status_str = "\n\n⚙️ <b>Status:</b> <i>Working on it...</i>"
             
             if msg.content_type == 'photo':
-                bot.edit_message_caption(caption=(msg.caption or "").replace("Working on it...", "") + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
+                clean_caption = (msg.caption or "").replace(work_status_str, "")
+                bot.edit_message_caption(caption=clean_caption + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
             else:
-                bot.edit_message_text(text=(msg.text or "").replace("Working on it...", "") + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
+                clean_text_content = (msg.text or "").replace(work_status_str, "")
+                bot.edit_message_text(text=clean_text_content + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
                 
         elif action == 'rej':
-            bot.send_message(uid, "❌ <b>আপনার রিকোয়েস্টটি অ্যাডমিন দ্বারা Reject করা হয়েছে।</b>")
-            final_text = "\n\n❌ <b>Status:</b> Rejected by " + admin_name
+            # রিজেক্ট করার কারণ চাওয়ার লজিক
+            prompt_msg = bot.send_message(call.message.chat.id, f"⚠️ <b>{admin_name}</b>, দয়া করে রিকোয়েস্টটি রিজেক্ট করার কারণ লিখে সেন্ড করুন (না দিতে চাইলে 'Skip' লিখুন):")
+            bot.register_next_step_handler(prompt_msg, process_rejection_reason, uid, msg, admin_name, prompt_msg.message_id)
             
-            if msg.content_type == 'photo':
-                bot.edit_message_caption(caption=(msg.caption or "").replace("Working on it...", "") + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
-            else:
-                bot.edit_message_text(text=(msg.text or "").replace("Working on it...", "") + final_text, chat_id=msg.chat.id, message_id=msg.message_id, reply_markup=None, parse_mode="HTML")
     except Exception as e:
         bot.answer_callback_query(call.id, "অ্যাকশন আপডেট করতে সমস্যা হয়েছে!")
+
+def process_rejection_reason(message, uid, original_msg, admin_name, prompt_msg_id):
+    if is_cmd(message): 
+        return
+        
+    reason = clean_text(message.text)
+    user_msg = "❌ <b>আপনার রিকোয়েস্টটি অ্যাডমিন দ্বারা Reject করা হয়েছে।</b>"
+    
+    # মেইন রিকোয়েস্টের নিচে যুক্ত করার জন্য নোট এবং স্ট্যাটাস
+    final_appended_text = ""
+    
+    # অ্যাডমিন যদি Skip না লেখে, তবেই কারণটা যুক্ত হবে
+    if reason.lower() not in ['skip', 'na', 'n/a', 'no']:
+        user_msg += f"\n📝 <b>কারণ:</b> {reason}"
+        # গ্রুপের জন্য ছোট করে নোট (Status এর ওপরে থাকবে)
+        final_appended_text += f"\n\n📌 <i>Note: {reason}</i>"
+        
+    # স্ট্যাটাস লাইনটি সবার শেষে যুক্ত হবে
+    final_appended_text += f"\n\n❌ <b>Status:</b> Rejected by {admin_name}"
+        
+    # ইউজারকে পার্সোনাল মেসেজ পাঠানো
+    try:
+        bot.send_message(uid, user_msg)
+    except Exception as e:
+        pass
+        
+    # অ্যাডমিন গ্রুপের মেইন মেসেজ আপডেট করা
+    try:
+        work_status_str = "\n\n⚙️ <b>Status:</b> <i>Working on it...</i>"
+        
+        if original_msg.content_type == 'photo':
+            # আগের 'Working on it' লেখাটা মুছে নতুন নোট এবং স্ট্যাটাস বসানো
+            clean_caption = (original_msg.caption or "").replace(work_status_str, "")
+            bot.edit_message_caption(caption=clean_caption + final_appended_text, chat_id=original_msg.chat.id, message_id=original_msg.message_id, reply_markup=None, parse_mode="HTML")
+        else:
+            clean_text_content = (original_msg.text or "").replace(work_status_str, "")
+            bot.edit_message_text(text=clean_text_content + final_appended_text, chat_id=original_msg.chat.id, message_id=original_msg.message_id, reply_markup=None, parse_mode="HTML")
+    except Exception as e:
+        pass
+        
+    # গ্রুপ পরিষ্কার রাখতে অ্যাডমিনের রিপ্লাই এবং বটের প্রশ্ন ডিলিট করে দেওয়া
+    try:
+        bot.delete_message(message.chat.id, message.message_id)
+        bot.delete_message(message.chat.id, prompt_msg_id)
+    except Exception as e:
+        pass
 
 # =======================================================
 # ১. 📊 আওয়ারলি রিপোর্ট
