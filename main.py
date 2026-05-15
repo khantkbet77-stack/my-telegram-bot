@@ -105,6 +105,7 @@ def setup_db():
         cursor.execute("CREATE TABLE IF NOT EXISTS message_map (admin_msg_id BIGINT PRIMARY KEY, user_id BIGINT)")
         cursor.execute("CREATE TABLE IF NOT EXISTS hourly_stats (id SERIAL PRIMARY KEY, user_id BIGINT, date TEXT, time TEXT, calls_h INTEGER, nsu_h INTEGER)")
         cursor.execute("CREATE TABLE IF NOT EXISTS reports_log (user_id BIGINT, date TEXT, time TEXT, log TEXT)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS recharges (id SERIAL PRIMARY KEY, user_id BIGINT, date TEXT, time TEXT, amount REAL, details TEXT)")
         
         conn.commit()
         conn.close()
@@ -483,7 +484,6 @@ def recharge_app(message):
 def save_recharge(message):
     if is_cmd(message):
         return
-        
     if not message.photo:
         bot.send_message(message.chat.id, "❌ স্ক্রিনশট বাধ্যতামূলক।")
         return
@@ -492,8 +492,29 @@ def save_recharge(message):
     cap = clean_text(message.caption)
     act_kb = get_action_buttons(message.chat.id)
     
+    # ক্যাপশন থেকে এমাউন্ট (Amount) বের করার লজিক
+    amt = 0.0
+    try:
+        match = re.search(r"(?:এমাউন্টও?|এমাউন্ট|Amount)[\s:]*([\d\,\.]+)", cap, re.IGNORECASE)
+        if match:
+            amt = float(match.group(1).replace(',', ''))
+    except Exception as e:
+        pass
+    
+    now = bd_time()
+    d_str = now.strftime("%Y-%m-%d")
+    t_str = now.strftime("%I:%M %p")
+    
     try:
         bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=f"📱 <b>RECHARGE</b>\n👤 {name}\n📝 {cap}", reply_markup=act_kb, message_thread_id=TOPIC_RECHARGE)
+        
+        # রিচার্জ ডাটাবেসে সেভ করা
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO recharges (user_id, date, time, amount, details) VALUES (%s, %s, %s, %s, %s)", (message.chat.id, d_str, t_str, amt, cap))
+        conn.commit()
+        conn.close()
+        
         bot.send_message(message.chat.id, "✅ পাঠানো হয়েছে।")
     except Exception as e:
         pass
@@ -567,7 +588,8 @@ def admin_panel_menu(message):
         types.InlineKeyboardButton("👤 ইউজার ম্যানেজমেন্ট", callback_data="adm_manage"), 
         types.InlineKeyboardButton("📢 প্রমোশন মেসেজ", callback_data="adm_promo"), 
         types.InlineKeyboardButton("💬 মেনশন মেসেজ", callback_data="adm_mention"), 
-        types.InlineKeyboardButton("📢 আপডেট নোটিশ পাঠান", callback_data="adm_upd_not")
+        types.InlineKeyboardButton("📢 আপডেট নোটিশ পাঠান", callback_data="adm_upd_not"),
+        types.InlineKeyboardButton("📱 রিচার্জ রিপোর্ট", callback_data="adm_rech_menu")
     )
     bot.send_message(message.chat.id, "👑 অ্যাডমিন প্যানেল:", reply_markup=kb)
 
@@ -731,6 +753,126 @@ def rpt_final(call):
     m = (total_sec % 3600) // 60
     
     bot.edit_message_text(f"📊 <b>Report: {user_name}</b>\n⏳ মোট কাজ: {h} ঘণ্টা {m} মিনিট\n📑 Hourly: {stats[2]} বার\n📞 Calls: {stats[0]} | 📉 NSU: {stats[1]}", call.message.chat.id, call.message.message_id)
+    # =======================================================
+# 📱 রিচার্জ রিপোর্ট সেকশন (Recharge Report Logic)
+# =======================================================
+@bot.callback_query_handler(func=lambda c: c.data == "adm_rech_menu")
+def adm_rech_menu(call):
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(types.InlineKeyboardButton("👥 সবার রিপোর্ট (চলতি মাস)", callback_data="rech_all"))
+    kb.add(types.InlineKeyboardButton("👤 নির্দিষ্ট ব্যক্তির (চলতি মাস)", callback_data="rech_users"))
+    kb.add(types.InlineKeyboardButton("📅 কাস্টম তারিখ (Custom Date)", callback_data="rech_custom"))
+    bot.edit_message_text("📱 <b>রিচার্জ রিপোর্ট প্যানেল:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data == "rech_all")
+def rech_all_report(call):
+    now = bd_time()
+    start_date = now.replace(day=1).strftime("%Y-%m-%d")
+    
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT u.name, SUM(r.amount), COUNT(r.id) FROM recharges r JOIN users u ON r.user_id = u.user_id WHERE r.date >= %s GROUP BY u.name", (start_date,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows:
+        return bot.answer_callback_query(call.id, "চলতি মাসে কোনো রিচার্জ ডাটা নেই!", show_alert=True)
+        
+    txt = f"📊 <b>সবার রিচার্জ রিপোর্ট (চলতি মাস)</b>\n📅 {start_date} থেকে আজ পর্যন্ত\n━━━━━━━━━━━━━━━━━━\n"
+    total_amt = 0
+    for name, amt, cnt in rows:
+        txt += f"👤 {name}: <b>{amt} ৳</b> ({cnt} বার)\n"
+        total_amt += amt
+    txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>সর্বমোট: {total_amt} ৳</b>"
+    
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda c: c.data == "rech_users")
+def rech_users_list(call):
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT u.user_id, u.name FROM recharges r JOIN users u ON r.user_id = u.user_id")
+    users_list = cursor.fetchall()
+    conn.close()
+    
+    if not users_list:
+        return bot.answer_callback_query(call.id, "কোনো ডাটা নেই!", show_alert=True)
+        
+    kb = types.InlineKeyboardMarkup()
+    for uid, name in users_list:
+        kb.add(types.InlineKeyboardButton(name, callback_data=f"rech_indv_{uid}"))
+    bot.edit_message_text("👤 কার রিপোর্ট দেখবেন?", call.message.chat.id, call.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("rech_indv_"))
+def rech_indv_report(call):
+    uid = int(call.data.split("_")[2])
+    now = bd_time()
+    start_date = now.replace(day=1).strftime("%Y-%m-%d")
+    
+    conn = get_conn()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM users WHERE user_id=%s", (uid,))
+    name = cursor.fetchone()[0]
+    cursor.execute("SELECT date, time, amount FROM recharges WHERE user_id=%s AND date >= %s ORDER BY date ASC", (uid, start_date))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows:
+        return bot.answer_callback_query(call.id, "চলতি মাসে ডাটা নেই!", show_alert=True)
+        
+    txt = f"📊 <b>রিচার্জ বিস্তারিত: {name}</b>\n📅 চলতি মাস\n━━━━━━━━━━━━━━━━━━\n"
+    total = 0
+    for d, t, a in rows:
+        txt += f"▪️ {d} | {t} ➔ <b>{a} ৳</b>\n"
+        total += a
+    txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>মোট: {total} ৳</b>"
+    
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda c: c.data == "rech_custom")
+def rech_custom_prompt(call):
+    msg = bot.send_message(
+        call.message.chat.id, 
+        "📅 <b>তারিখ অনুযায়ী রিপোর্ট:</b>\n\nদয়া করে শুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
+    )
+    bot.register_next_step_handler(msg, process_custom_date_report)
+
+def process_custom_date_report(message):
+    if is_cmd(message): return
+    
+    try:
+        parts = message.text.strip().split()
+        if len(parts) != 2:
+            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। দয়া করে মাঝে একটি স্পেস দিয়ে দুটি তারিখ লিখুন (যেমন: 01-05-2026 15-05-2026)।")
+            return
+            
+        d1_obj = datetime.strptime(parts[0], "%d-%m-%Y")
+        d2_obj = datetime.strptime(parts[1], "%d-%m-%Y")
+        
+        start_db = d1_obj.strftime("%Y-%m-%d")
+        end_db = d2_obj.strftime("%Y-%m-%d")
+        
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT u.name, SUM(r.amount), COUNT(r.id) FROM recharges r JOIN users u ON r.user_id = u.user_id WHERE r.date >= %s AND r.date <= %s GROUP BY u.name", (start_db, end_db))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            bot.send_message(message.chat.id, f"📅 <b>{parts[0]}</b> থেকে <b>{parts[1]}</b> পর্যন্ত কোনো রিচার্জ ডাটা নেই!")
+            return
+            
+        txt = f"📊 <b>কাস্টম রিচার্জ রিপোর্ট</b>\n📅 {parts[0]} থেকে {parts[1]}\n━━━━━━━━━━━━━━━━━━\n"
+        total_amt = 0
+        for name, amt, cnt in rows:
+            txt += f"👤 {name}: <b>{amt} ৳</b> ({cnt} বার)\n"
+            total_amt += amt
+            
+        txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>সর্বমোট: {total_amt} ৳</b>"
+        bot.send_message(message.chat.id, txt)
+        
+    except Exception as e:
+        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দয়া করে দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন।")
 
 # =======================================================
 # ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম (Detailed Logic)
