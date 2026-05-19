@@ -636,7 +636,7 @@ def handle_adm_callback(call):
             
         bot.edit_message_text("👤 ইউজার রিমুভ:", call.message.chat.id, call.message.message_id, reply_markup=kb)
         
-   elif call.data == "adm_check":
+    elif call.data == "adm_check":
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(
             types.InlineKeyboardButton("👤 একজন একজন করে", callback_data="rpt_mode_single"),
