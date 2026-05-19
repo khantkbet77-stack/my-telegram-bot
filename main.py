@@ -639,9 +639,9 @@ def handle_adm_callback(call):
     elif call.data == "adm_check":
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে", callback_data="rpt_mode_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (আজ)", callback_data="rpt_mode_all_today"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (সবাই একসাথে)", callback_data="rpt_mode_all_custom")
+            types.InlineKeyboardButton("👤 একজন একজন করে", callback_data="chk_mode_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (আজ)", callback_data="chk_mode_all_today"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (সবাই একসাথে)", callback_data="chk_mode_all_custom")
         )
         bot.edit_message_text("📊 <b>রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
@@ -875,7 +875,7 @@ def process_custom_date_report(message):
 # =======================================================
 
 # ১. একজন একজন করে দেখার জন্য ইউজার লিস্ট নিয়ে আসার ফাংশন
-@bot.callback_query_handler(func=lambda c: c.data == "rpt_mode_single")
+@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_single")
 def rpt_mode_single_list(call):
     conn = get_conn()
     cur = conn.cursor()
@@ -889,7 +889,7 @@ def rpt_mode_single_list(call):
     bot.edit_message_text("👤 কার রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 # ২. সবার আজকের রিপোর্ট একসাথে দেখার ফাংশন
-@bot.callback_query_handler(func=lambda c: c.data == "rpt_mode_all_today")
+@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_all_today")
 def rpt_mode_all_today_show(call):
     now = bd_time()
     d_str = now.strftime("%Y-%m-%d")
@@ -922,7 +922,7 @@ def rpt_mode_all_today_show(call):
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
 
 # ৩. কাস্টম তারিখ অনুযায়ী সবার রিপোর্ট একসাথে দেখার প্রম্পট ও প্রসেস ফাংশন
-@bot.callback_query_handler(func=lambda c: c.data == "rpt_mode_all_custom")
+@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_all_custom")
 def rpt_mode_all_custom_prompt(call):
     msg = bot.send_message(
         call.message.chat.id, 
