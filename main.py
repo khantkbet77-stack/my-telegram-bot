@@ -636,18 +636,14 @@ def handle_adm_callback(call):
             
         bot.edit_message_text("👤 ইউজার রিমুভ:", call.message.chat.id, call.message.message_id, reply_markup=kb)
         
-    elif call.data == "adm_check":
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT user_id, name FROM users")
-        users_list = cur.fetchall()
-        conn.close()
-        
-        kb = types.InlineKeyboardMarkup()
-        for x in users_list:
-            kb.add(types.InlineKeyboardButton(x[1], callback_data=f"rpt_{x[0]}"))
-            
-        bot.edit_message_text("📊 রিপোর্ট চেক:", call.message.chat.id, call.message.message_id, reply_markup=kb)
+   elif call.data == "adm_check":
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton("👤 একজন একজন করে", callback_data="rpt_mode_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (আজ)", callback_data="rpt_mode_all_today"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (সবাই একসাথে)", callback_data="rpt_mode_all_custom")
+        )
+        bot.edit_message_text("📊 <b>রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("mnt_"))
 def mnt_step_2(call):
@@ -873,7 +869,112 @@ def process_custom_date_report(message):
         
     except Exception as e:
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দয়া করে দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন।")
+        
+# =======================================================
+# 📋 অ্যাডমিন রিপোর্ট চেক প্যানেল (৩টি ভিন্ন অপশন)
+# =======================================================
 
+# ১. একজন একজন করে দেখার জন্য ইউজার লিস্ট নিয়ে আসার ফাংশন
+@bot.callback_query_handler(func=lambda c: c.data == "rpt_mode_single")
+def rpt_mode_single_list(call):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id, name FROM users")
+    users_list = cur.fetchall()
+    conn.close()
+    
+    kb = types.InlineKeyboardMarkup()
+    for x in users_list:
+        kb.add(types.InlineKeyboardButton(x[1], callback_data=f"rpt_{x[0]}"))
+    bot.edit_message_text("👤 কার রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
+
+# ২. সবার আজকের রিপোর্ট একসাথে দেখার ফাংশন
+@bot.callback_query_handler(func=lambda c: c.data == "rpt_mode_all_today")
+def rpt_mode_all_today_show(call):
+    now = bd_time()
+    d_str = now.strftime("%Y-%m-%d")
+    disp_date = now.strftime("%d %b, %Y")
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT u.name, 
+               COALESCE(w.total_seconds, 0),
+               (SELECT COUNT(*) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s),
+               (SELECT COALESCE(SUM(calls_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s),
+               (SELECT COALESCE(SUM(nsu_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s)
+        FROM users u 
+        LEFT JOIN work_hours w ON u.user_id = w.user_id AND w.date = %s
+        WHERE w.total_seconds > 0 OR EXISTS (SELECT 1 FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s)
+    """, (d_str, d_str, d_str, d_str, d_str))
+    rows = cur.fetchall()
+    conn.close()
+    
+    if not rows:
+        return bot.answer_callback_query(call.id, "আজকে এখনো কোনো কাজের ডাটা নেই!", show_alert=True)
+        
+    txt = f"📊 <b>সবার আজকের রিপোর্ট</b>\n📅 তারিখ: {disp_date}\n━━━━━━━━━━━━━━━━━━\n"
+    for name, sec, h_count, calls, nsu in rows:
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        txt += f"👤 <b>{name}</b>\n⏳ কাজ: {h} ঘণ্টা {m} মিনিট | 📑 রিপোর্ট: {h_count}টি\n📞 Call: {calls} | 📉 NSU: {nsu}\n\n"
+        
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+
+# ৩. কাস্টম তারিখ অনুযায়ী সবার রিপোর্ট একসাথে দেখার প্রম্পট ও প্রসেস ফাংশন
+@bot.callback_query_handler(func=lambda c: c.data == "rpt_mode_all_custom")
+def rpt_mode_all_custom_prompt(call):
+    msg = bot.send_message(
+        call.message.chat.id, 
+        "📅 <b>সবার কাস্টম তারিখের রিপোর্ট:</b>\n\nশুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
+    )
+    bot.register_next_step_handler(msg, process_all_users_custom_report)
+
+def process_all_users_custom_report(message):
+    if is_cmd(message): return
+    
+    try:
+        parts = message.text.strip().split()
+        if len(parts) != 2:
+            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। মাঝে স্পেস দিয়ে দুটি তারিখ করুন (যেমন: 01-05-2026 15-05-2026)।")
+            return
+            
+        d1_obj = datetime.strptime(parts[0], "%d-%m-%Y")
+        d2_obj = datetime.strptime(parts[1], "%d-%m-%Y")
+        start_db = d1_obj.strftime("%Y-%m-%d")
+        end_db = d2_obj.strftime("%Y-%m-%d")
+        
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT u.name, 
+                   COALESCE(SUM(w.total_seconds), 0),
+                   (SELECT COUNT(*) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s),
+                   (SELECT COALESCE(SUM(calls_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s),
+                   (SELECT COALESCE(SUM(nsu_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s)
+            FROM users u
+            LEFT JOIN work_hours w ON u.user_id = w.user_id AND w.date >= %s AND w.date <= %s
+            GROUP BY u.user_id, u.name
+            HAVING SUM(w.total_seconds) > 0 OR EXISTS (SELECT 1 FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s)
+        """, (start_db, end_db, start_db, end_db, start_db, end_db, start_db, end_db, start_db, end_db))
+        rows = cur.fetchall()
+        conn.close()
+        
+        if not rows:
+            bot.send_message(message.chat.id, f"📅 <b>{parts[0]}</b> থেকে <b>{parts[1]}</b> এর মধ্যে কোনো রিপোর্ট ডাটা নেই!")
+            return
+            
+        txt = f"📊 <b>সবার কাস্টম রিপোর্ট ({parts[0]} থেকে {parts[1]})</b>\n━━━━━━━━━━━━━━━━━━\n"
+        for name, sec, h_count, calls, nsu in rows:
+            h = sec // 3600
+            m = (sec % 3600) // 60
+            txt += f"👤 <b>{name}</b>\n⏳ মোট কাজ: {h} ঘণ্টা {m} মিনিট | 📑 রিপোর্ট: {h_count}টি\n📞 Call: {calls} | 📉 NSU: {nsu}\n\n"
+            
+        bot.send_message(message.chat.id, txt)
+        
+    except Exception as e:
+        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
+        
 # =======================================================
 # ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম (Detailed Logic)
 # =======================================================
