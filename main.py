@@ -14,7 +14,10 @@ from flask import Flask
 BOT_TOKEN = "8636640934:AAHrh_jJhZoe5O46mfvMDrc0UJ3IWE4CXGI"  
 ADMIN_GROUP_ID = -1003984851079 
 
-# অ্যাডমিন লিস্ট (এদেরকে কোনো ওয়ার্নিং বা রিমাইন্ডার দেওয়া হবে না)
+# 🔒 বটের সিকিউরিটি পাসওয়ার্ড (বাইরের মানুষ আটকাতে এটি নতুন যোগ করা হলো)
+BOT_PASSWORD = "Tkbet77ST"
+
+# অ্যাডমিন লিস্ট (এদেরকে কোনো ওয়ার্নিং বা রিমাইন্ডার দেওয়া হবে না)
 ALLOWED_ADMINS = ['aminal041', 'bdhasan09', 'alexbd96']
 ADMIN_MENTION = "@AlexBD96"
 
@@ -136,8 +139,19 @@ def start(message):
     if name != "Unknown User":
         bot.send_message(message.chat.id, f"👇 <b>আপনার মেনু:</b>", reply_markup=main_menu(message.from_user))
     else:
-        msg = bot.send_message(message.chat.id, "👋 <b>স্বাগতম! বটটি আপডেট করা হয়েছে।</b>\nসিস্টেম ব্যবহারের জন্য আপনার <b>পুরো নাম</b> লিখে সেন্ড করুন।")
+        # নতুন ইউজার হলে আগে পাসওয়ার্ড চাইবে
+        msg = bot.send_message(message.chat.id, "🔒 <b>বটটি সিকিউর করা হয়েছে!</b>\n\nসিস্টেম ব্যবহার করতে দয়া করে টিমের <b>পাসওয়ার্ড (Secret Code)</b> টি লিখে সেন্ড করুন:")
+        bot.register_next_step_handler(msg, check_password)
+
+# 🔒 পাসওয়ার্ড চেক করার নতুন ফাংশন
+def check_password(message):
+    if is_cmd(message): return
+    
+    if message.text.strip() == BOT_PASSWORD:
+        msg = bot.send_message(message.chat.id, "✅ <b>পাসওয়ার্ড সঠিক!</b>\n\nসিস্টেম ব্যবহারের জন্য এবার আপনার <b>পুরো নাম</b> লিখে সেন্ড করুন:")
         bot.register_next_step_handler(msg, register)
+    else:
+        bot.send_message(message.chat.id, "❌ <b>পাসওয়ার্ড ভুল!</b>\nসঠিক পাসওয়ার্ড ছাড়া আপনি এই বট ব্যবহার করতে পারবেন না। আবার চেষ্টা করতে /start লিখুন।")
 
 def register(message):
     if is_cmd(message):
@@ -157,7 +171,7 @@ def register(message):
         
         bot.send_message(message.chat.id, f"🎊 রেজিস্ট্রেশন সফল! স্বাগতম <b>{clean_name}</b>।", reply_markup=main_menu(message.from_user))
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ রেজিস্ট্রেশনে সমস্যা হয়েছে।")
+        bot.send_message(message.chat.id, "❌ রেজিস্ট্রেশনে সমস্যা হয়েছে।")
 
 # =======================================================
 # ✅ অ্যাকশন বাটন লজিক (Approve / Reject / Work)
