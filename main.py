@@ -579,9 +579,6 @@ def save_recharge(message):
         pass
 
 # =======================================================
-# ৫. 🩺 SL-OFF-issue (বানান ও স্পেস ডাবল-সেফ ফিক্স)
-# =======================================================
-# =======================================================
 # ৫. 🩺 SL-OFF-issue (বানান, স্পেস ও None ফিক্স)
 # =======================================================
 @bot.message_handler(func=lambda m: m.text is not None and ("SL-OFF-issue" in m.text or "SL-OFF-issu" in m.text))
@@ -823,9 +820,9 @@ def handle_adm_callback(call):
     elif call.data == "adm_leave_check":
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lv_rpt_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lv_rpt_all_month"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lv_rpt_custom")
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="adm_leave_custom")
         )
         bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
