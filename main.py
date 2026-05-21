@@ -1150,44 +1150,47 @@ def process_all_users_custom_report(message):
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
 
 # =======================================================
-# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (কলব্যাক জ্যাম ১০০% ফিক্সড)
+# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (স্ট্রিং ফরম্যাট - ১০০% জ্যাম ফ্রি)
 # =======================================================
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_check")
 def adm_leave_menu_show(call):
     try:
         bot.answer_callback_query(call.id)
         kb = types.InlineKeyboardMarkup(row_width=1)
-        # জ্যাম এড়াতে কলব্যাক আইডি সম্পূর্ণ আলাদা (lvrpt_) করা হলো
         kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lvrpt_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lvrpt_all_month"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lvrpt_custom")
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="adm_leave_custom")
         )
         bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("Menu Show Error:", e)
 
 # ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট প্রসেস
-@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_single")
+@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_single")
 def lv_rpt_single_list(call):
     try:
         bot.answer_callback_query(call.id)
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL AND name != ''")
+        
+        # ইউজার লিস্ট টানার একদম সহজ লজিক
+        cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL")
         users_list = cur.fetchall()
         conn.close()
         
         if not users_list:
-            return bot.edit_message_text("❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার বা নামের ডাটা পাওয়া যায়নি!", call.message.chat.id, call.message.message_id)
+            return bot.edit_message_text("❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!", call.message.chat.id, call.message.message_id)
             
         kb = types.InlineKeyboardMarkup(row_width=2)
         for x in users_list:
-            kb.add(types.InlineKeyboardButton(str(x[1]), callback_data=f"rpt_single_show-{x[0]}"))
+            if x[1]: # নাম থাকলে বাটন এড হবে
+                kb.add(types.InlineKeyboardButton(str(x[1]), callback_data=f"rpt_single_show-{x[0]}"))
             
         bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("User List Error:", e)
+        bot.edit_message_text("❌ ইউজার লিস্ট লোড করতে সমস্যা হয়েছে।", call.message.chat.id, call.message.message_id)
 
 # একক ইউজারের ছুটির মেইন রিপোর্ট দেখানোর ফাংশন
 @bot.callback_query_handler(func=lambda c: c.data.startswith('rpt_single_show-'))
@@ -1196,16 +1199,20 @@ def lv_rpt_single_show(call):
         bot.answer_callback_query(call.id)
         uid = int(call.data.split('-')[1])
         now = bd_time()
-        start_month = now.replace(day=1).strftime("%Y-%m-%d")
+        
+        # ডেট অবজেক্টের ঝামেলা এড়াতে সরাসরি টেক্সট ফরম্যাটে চলতি মাসের শুরু নেওয়া হলো
+        start_month_str = now.replace(day=1).strftime("%Y-%m-%d")
         
         conn = get_conn()
         cur = conn.cursor()
+        
+        # ডেট কাস্টিং বাদ দিয়ে একদম সহজ কোয়েরি
         cur.execute("""
             SELECT leave_type, COUNT(*), COALESCE(SUM(extra_seconds), 0) 
             FROM user_leaves 
-            WHERE user_id = %s AND apply_date >= CAST(%s AS DATE) AND status = 'Approved'
+            WHERE user_id = %s AND apply_date >= %s AND status = 'Approved'
             GROUP BY leave_type
-        """, (uid, start_month))
+        """, (uid, start_month_str))
         rows = cur.fetchall()
         
         cur.execute("SELECT name FROM users WHERE user_id = %s", (uid,))
@@ -1213,7 +1220,7 @@ def lv_rpt_single_show(call):
         uname = u_row[0] if u_row else "Unknown User"
         conn.close()
         
-        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>( can't Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
+        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>(Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
         
         sick, half, emg, extra_cnt, extra_sec = 0, 0, 0, 0, 0
         if rows:
@@ -1236,17 +1243,20 @@ def lv_rpt_single_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Show Single Leave Error:", e)
+        bot.edit_message_text("❌ ছুটির ডাটা প্রসেস করতে টেকনিক্যাল সমস্যা হয়েছে!", call.message.chat.id, call.message.message_id)
 
 # ২. সবার একসাথে চলতি মাসের ছুটির সামারি
-@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_all_month")
+@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_all_month")
 def lv_rpt_all_month_show(call):
     try:
         bot.answer_callback_query(call.id)
         now = bd_time()
-        start_month = now.replace(day=1).strftime("%Y-%m-%d")
+        start_month_str = now.replace(day=1).strftime("%Y-%m-%d")
         
         conn = get_conn()
         cur = conn.cursor()
+        
+        # সহজ স্ট্রিং ম্যাচিং কোয়েরি
         cur.execute("""
             SELECT name,
                    COUNT(CASE WHEN leave_type='SICK LEAVE' THEN 1 END) as sick,
@@ -1255,9 +1265,9 @@ def lv_rpt_all_month_show(call):
                    COUNT(CASE WHEN leave_type='EXTRA BREAK' THEN 1 END) as extra_cnt,
                    COALESCE(SUM(CASE WHEN leave_type='EXTRA BREAK' THEN extra_seconds ELSE 0 END), 0) as extra_sec
             FROM user_leaves
-            WHERE apply_date >= CAST(%s AS DATE) AND status = 'Approved'
+            WHERE apply_date >= %s AND status = 'Approved'
             GROUP BY name
-        """, (start_month,))
+        """, (start_month_str,))
         rows = cur.fetchall()
         conn.close()
         
@@ -1273,15 +1283,16 @@ def lv_rpt_all_month_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Bulk Report Error:", e)
+        bot.edit_message_text("❌ সামারি ডাটা টানতে সমস্যা হয়েছে।", call.message.chat.id, call.message.message_id)
 
 # ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
-@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_custom")
+@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_custom")
 def lv_rpt_custom_prompt(call):
     try:
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id, 
-            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
+            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
         )
         bot.register_next_step_handler(msg, process_custom_leave_report)
     except Exception as e:
@@ -1303,7 +1314,7 @@ def process_custom_leave_report(message):
         cur.execute("""
             SELECT name, leave_type, apply_date, extra_seconds 
             FROM user_leaves 
-            WHERE apply_date >= CAST(%s AS DATE) AND apply_date <= CAST(%s AS DATE) AND status = 'Approved'
+            WHERE apply_date >= %s AND apply_date <= %s AND status = 'Approved'
             ORDER BY apply_date ASC
         """, (d1, d2))
         rows = cur.fetchall()
@@ -1315,7 +1326,8 @@ def process_custom_leave_report(message):
             
         txt = f"📊 <b>কাস্টম ছুটির রিপোর্ট ({parts[0]} থেকে {parts[1]})</b>\n━━━━━━━━━━━━━━━━━━\n"
         for name, ltype, ldate, ex_sec in rows:
-            dt_str = ldate.strftime("%d-%m-%Y")
+            # ডেট অবজেক্ট না বানিয়ে সরাসরি স্ট্রিং/টেক্সট হিসেবে প্রিন্ট করা হলো
+            dt_str = str(ldate)
             if ltype == "EXTRA BREAK":
                 ex_m = ex_sec // 60
                 txt += f"• <b>{name}</b> — {dt_str} [⏳ Extra Break: {ex_m} মিনিট]\n"
@@ -1324,7 +1336,8 @@ def process_custom_leave_report(message):
                 
         bot.send_message(message.chat.id, txt)
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
+        print("Custom Report Process Error:", e)
+        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয় অথবা প্রসেস করতে সমস্যা হয়েছে। (DD-MM-YYYY)")
         
 # =======================================================
 # ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম (Detailed Logic)
