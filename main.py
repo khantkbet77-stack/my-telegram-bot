@@ -515,34 +515,44 @@ def save_recharge(message):
         conn.commit()
         conn.close()
         
-        bot.send_message(message.chat.id, "✅ পাঠানো হয়েছে।")
+        bot.send_message(message.chat.id, "✅ পাঠানো হয়েছে।")
     except Exception as e:
         pass
 
+# =======================================================
+# ৫. 🩺 SL-OFF-issue (Updated with Half Day)
+# =======================================================
 @bot.message_handler(func=lambda m: m.text == "🩺 SL-OFF-issue")
 def leave_menu(message):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🤒 অসুস্থ ছুটি", callback_data="lv_sick"), 
-        types.InlineKeyboardButton("⏳ অতিরিক্ত বিরতি সময়", callback_data="lv_extra"), 
-        types.InlineKeyboardButton("🆘 ইমারজেন্সি কাজ", callback_data="lv_emg")
+        types.InlineKeyboardButton("⏳ অতিরিক্ত বিরতি সময়", callback_data="lv_extra"), 
+        types.InlineKeyboardButton("🆘 ইমারজেন্সি কাজ", callback_data="lv_emg"),
+        types.InlineKeyboardButton("🌗 হাফ ডে (Half Day)", callback_data="lv_half")
     )
     bot.send_message(message.chat.id, "🩺 ধরন সিলেক্ট করুন:", reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('lv_'))
 def handle_leave(call):
+    # হাফ ডে-তে ক্লিক করলে আলাদা প্রসেস শুরু হবে
+    if call.data == "lv_half":
+        msg = bot.send_message(call.message.chat.id, "📅 <b>হাফ ডে (Half Day) রিকোয়েস্ট:</b>\n\nযে তারিখের জন্য হাফ ডে চাচ্ছেন, সেটি লিখে সেন্ড করুন\n(যেমন: 25-05-2026):")
+        bot.register_next_step_handler(msg, process_half_date)
+        return
+        
+    # আগের অন্যান্য ছুটির প্রসেস
     if call.data == "lv_sick":
         fmt = "তারিখ: \nবিস্তারিত: \nদিন: "
         mode = "SICK LEAVE"
     elif call.data == "lv_extra":
-        fmt = "বিরতি শুরু: \nবিরতি শেষ: \nমোট সময়: "
+        fmt = "বিরতি শুরু: \nবিরতি শেষ: \nমোট সময়: "
         mode = "EXTRA BREAK"
     else:
         fmt = "তারিখ: \nকারণ: \nডকুমেন্টস: "
         mode = "EMERGENCY WORK"
         
     txt = f"📝 {mode}\n\n<code>{fmt}</code>"
-    
     if mode == "EMERGENCY WORK":
         txt += "\n(স্ক্রিনশট বাধ্যতামূলক)"
         
@@ -569,9 +579,61 @@ def save_leave(message, mode):
         else:
             bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE)
             
-        bot.send_message(message.chat.id, "✅ অ্যাডমিনকে জানানো হয়েছে।")
+        bot.send_message(message.chat.id, "✅ অ্যাডমিনকে জানানো হয়েছে।")
     except Exception as e:
         pass
+
+# -------------------------------------------------------
+# 🌗 হাফ ডে (Half Day) এর নতুন লজিক ও বাটন
+# -------------------------------------------------------
+def process_half_date(message):
+    if is_cmd(message): return
+    date_text = clean_text(message.text)[:20]
+    
+    kb = types.InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        types.InlineKeyboardButton("☀️ দিন (সকাল ১০:০০ - ১৬:০০)", callback_data=f"hds_day_{date_text}"),
+        types.InlineKeyboardButton("🌙 রাত (১৬:০০ - ২২:০০)", callback_data=f"hds_ngt_{date_text}")
+    )
+    bot.send_message(message.chat.id, f"📅 তারিখ: <b>{date_text}</b>\n\nএবার আপনার শিফট সিলেক্ট করুন:", reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('hds_'))
+def process_half_shift(call):
+    parts = call.data.split('_', 2)
+    shift_code = parts[1] 
+    date_text = parts[2]
+    
+    shift_name = "দিন (১০:০০ - ১৬:০০)" if shift_code == 'day' else "রাত (১৬:০০ - ২২:০০)"
+    
+    kb = types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        types.InlineKeyboardButton("✅ Yes (রাজি)", callback_data=f"hdc_y_{shift_code}_{date_text}"),
+        types.InlineKeyboardButton("❌ No", callback_data="hdc_n")
+    )
+    
+    txt = f"⚠️ <b>হাফ ডে শর্তাবলি:</b>\n\nআপনি <b>{date_text}</b> তারিখে <b>{shift_name}</b> শিফটে হাফ ডে ডিউটি করতে চাচ্ছেন।\n\n📌 <i>নোট: এই হাফ ডে ডিউটিতে আপনি বিরতি পাবেন মাত্র ৩০ মিনিট।</i>\n\nআপনি কি রাজি?"
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('hdc_'))
+def process_half_confirm(call):
+    if call.data == "hdc_n":
+        return bot.edit_message_text("❌ আপনার হাফ ডে রিকোয়েস্ট বাতিল করা হয়েছে।", call.message.chat.id, call.message.message_id)
+        
+    parts = call.data.split('_', 3)
+    shift_code = parts[2]
+    date_text = parts[3]
+    
+    shift_name = "দিন (১০:০০ - ১৬:০০)" if shift_code == 'day' else "রাত (১৬:০০ - ২২:০০)"
+    name = get_user_name(call.message.chat.id)
+    
+    act_kb = get_action_buttons(call.message.chat.id)
+    report = f"🌗 <b>HALF DAY REQUEST</b>\n👤 User: {name}\n📢 <b>Admin:</b> {ADMIN_MENTION}\n📅 তারিখ: <b>{date_text}</b>\n⏱️ শিফট: <b>{shift_name}</b>\n📌 নোট: ইউজার ৩০ মিনিট বিরতির শর্তে রাজি হয়েছেন।"
+    
+    try:
+        bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE)
+        bot.edit_message_text("✅ আপনার হাফ ডে রিকোয়েস্ট সফলভাবে অ্যাডমিনদের কাছে পাঠানো হয়েছে।", call.message.chat.id, call.message.message_id)
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে!")
 
 # =======================================================
 # 👑 অ্যাডমিন প্যানেল
