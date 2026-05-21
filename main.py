@@ -1221,7 +1221,7 @@ def lv_rpt_custom_prompt(call):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id, 
-            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
+            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 21-05-2026"
         )
         bot.register_next_step_handler(msg, process_custom_leave_report)
     except Exception as e:
@@ -1233,22 +1233,26 @@ def process_custom_leave_report(message):
     try:
         parts = message.text.strip().split()
         if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। (যেমন: 01-05-2026 20-05-2026)")
+            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। (যেমন: 01-05-2026 21-05-2026)")
             return
             
-        d1_obj = datetime.strptime(parts[0], "%d-%m-%Y").date()
-        d2_obj = datetime.strptime(parts[1], "%d-%m-%Y").date()
+        # 🇧🇩 input string-কে সরাসরি ডেট অবজেক্ট না বানিয়ে স্ট্রিং ফরম্যাটেই রাখা হলো
+        # এবং সেটিকে নিখুঁতভাবে YYYY-MM-DD ফরম্যাটের টেক্সটে রূপান্তর করা হলো (টাইমজোন এরর মুক্ত রাখতে)
+        d1_str = datetime.strptime(parts[0], "%d-%m-%Y").strftime("%Y-%m-%d")
+        d2_str = datetime.strptime(parts[1], "%d-%m-%Y").strftime("%Y-%m-%d")
         
         conn = get_conn()
         cur = conn.cursor()
+        
+        # 🔒 ডেট কলামকে সরাসরি টেক্সট রেঞ্জের সাথে তুলনা করা হলো (এতে আজকের ডেট বা সার্ভার টাইম ক্ল্যাশ করবে না)
         cur.execute("""
             SELECT name, leave_type, apply_date, extra_seconds 
             FROM user_leaves 
-            WHERE apply_date >= CAST(%s AS DATE) 
-              AND apply_date <= CAST(%s AS DATE) 
+            WHERE apply_date::text >= %s 
+              AND apply_date::text <= %s 
               AND status = 'Approved'
             ORDER BY apply_date ASC
-        """, (d1_obj, d2_obj))
+        """, (d1_str, d2_str))
         rows = cur.fetchall()
         conn.close()
         
