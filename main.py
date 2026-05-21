@@ -1227,24 +1227,20 @@ def lv_rpt_custom_prompt(call):
     except Exception as e:
         print("Custom Prompt Error:", e)
 
-# কাস্টম ছুটির রিপোর্ট প্রসেস ফাংশন (Error Alert ফিক্স সহ)
+# কাস্টম ছুটির রিপোর্ট প্রসেস ফাংশন (ক্র্যাশ ফিক্সড)
 def process_custom_leave_report(message):
     if is_cmd(message): return
     try:
         parts = message.text.strip().split()
         if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। (যেমন: 01-05-2026 21-05-2026)")
+            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। (যেমন: 01-05-2026 20-05-2026)")
             return
             
-        # 🇧🇩 input string-কে সরাসরি ডেট অবজেক্ট না বানিয়ে স্ট্রিং ফরম্যাটেই রাখা হলো
-        # এবং সেটিকে নিখুঁতভাবে YYYY-MM-DD ফরম্যাটের টেক্সটে রূপান্তর করা হলো (টাইমজোন এরর মুক্ত রাখতে)
         d1_str = datetime.strptime(parts[0], "%d-%m-%Y").strftime("%Y-%m-%d")
         d2_str = datetime.strptime(parts[1], "%d-%m-%Y").strftime("%Y-%m-%d")
         
         conn = get_conn()
         cur = conn.cursor()
-        
-        # 🔒 ডেট কলামকে সরাসরি টেক্সট রেঞ্জের সাথে তুলনা করা হলো (এতে আজকের ডেট বা সার্ভার টাইম ক্ল্যাশ করবে না)
         cur.execute("""
             SELECT name, leave_type, apply_date, extra_seconds 
             FROM user_leaves 
@@ -1262,9 +1258,17 @@ def process_custom_leave_report(message):
             
         txt = f"📊 <b>কাস্টম ছুটির রিপোর্ট ({parts[0]} থেকে {parts[1]})</b>\n━━━━━━━━━━━━━━━━━━\n"
         for name, ltype, ldate, ex_sec in rows:
-            dt_str = ldate.strftime("%d-%m-%Y") if isinstance(ldate, (datetime, datetime.date)) else str(ldate)
+            # ১. ডেট ফরম্যাট ক্র্যাশ ফিক্স (যেকোনো ফরম্যাট সাপোর্ট করবে)
+            try:
+                dt_str = ldate.strftime("%d-%m-%Y")
+            except:
+                dt_str = str(ldate)
+                
+            # ২. NULL বা None ডাটা ক্র্যাশ ফিক্স (None থাকলে ০ ধরে নেবে)
+            ex_sec_val = ex_sec if ex_sec is not None else 0
+            
             if ltype == "EXTRA BREAK":
-                ex_m = ex_sec // 60
+                ex_m = ex_sec_val // 60
                 txt += f"• <b>{name}</b> — {dt_str} [⏳ Extra Break: {ex_m} মিনিট]\n"
             else:
                 txt += f"• <b>{name}</b> — {dt_str} [{ltype}]\n"
@@ -1272,7 +1276,7 @@ def process_custom_leave_report(message):
         bot.send_message(message.chat.id, txt)
     except Exception as e:
         print("Custom Leave Process Error:", e)
-        bot.send_message(message.chat.id, "❌ তারিখ প্রসেস করতে সমস্যা হয়েছে অথবা ফরম্যাট ভুল। (DD-MM-YYYY)")
+        bot.send_message(message.chat.id, "❌ তারিখ প্রসেস করতে সমস্যা হয়েছে অথবা ফরম্যাট ভুল। (DD-MM-YYYY)")
         
 # =======================================================
 # ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম (Detailed Logic)
