@@ -581,9 +581,11 @@ def save_recharge(message):
 # =======================================================
 # ৫. 🩺 SL-OFF-issue (বানান ও স্পেস ডাবল-সেফ ফিক্স)
 # =======================================================
-@bot.message_handler(func=lambda m: m.text is not null and ("SL-OFF-issue" in m.text or "SL-OFF-issu" in m.text))
+# =======================================================
+# ৫. 🩺 SL-OFF-issue (বানান, স্পেস ও None ফিক্স)
+# =======================================================
+@bot.message_handler(func=lambda m: m.text is not None and ("SL-OFF-issue" in m.text or "SL-OFF-issu" in m.text))
 def leave_menu(message):
-    if not check_user_active(message): return
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🤒 অসুস্থ ছুটি", callback_data="lv_sick"), 
@@ -1158,18 +1160,18 @@ def adm_leave_menu_show(call):
     try:
         bot.answer_callback_query(call.id)
         kb = types.InlineKeyboardMarkup(row_width=1)
-        # ডাটা মিক্সিং বন্ধ করতে কলব্যাক নেম সম্পূর্ণ পরিবর্তন করা হলো (rpt_ দিয়ে শুরু)
+        # ডাটা মিক্সিং বন্ধ করতে কলব্যাক নেম সম্পূর্ণ পরিবর্তন করা হলো (adm_leave_ দিয়ে শুরু)
         kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="rpt_leave_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="rpt_leave_all_month"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="rpt_leave_custom")
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="adm_leave_custom")
         )
         bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("Menu Show Error:", e)
 
 # ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট
-@bot.callback_query_handler(func=lambda c: c.data == "rpt_leave_single")
+@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_single")
 def lv_rpt_single_list(call):
     try:
         bot.answer_callback_query(call.id)
@@ -1180,7 +1182,7 @@ def lv_rpt_single_list(call):
         conn.close()
         
         if not users_list:
-            return bot.send_message(call.message.chat.id, "❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!")
+            return bot.send_message(call.message.chat.id, "❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!")
             
         kb = types.InlineKeyboardMarkup()
         for x in users_list:
@@ -1215,7 +1217,7 @@ def lv_rpt_single_show(call):
         uname = u_row[0] if u_row else "Unknown User"
         conn.close()
         
-        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>( can't Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
+        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>(শুধুমাত্র Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
         
         sick, half, emg, extra_cnt, extra_sec = 0, 0, 0, 0, 0
         if rows:
@@ -1240,7 +1242,7 @@ def lv_rpt_single_show(call):
         print("Show Single Leave Error:", e)
 
 # ২. সবার একসাথে চলতি মাসের ছুটির সামারি
-@bot.callback_query_handler(func=lambda c: c.data == "rpt_leave_all_month")
+@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_all_month")
 def lv_rpt_all_month_show(call):
     try:
         bot.answer_callback_query(call.id)
@@ -1276,14 +1278,14 @@ def lv_rpt_all_month_show(call):
     except Exception as e:
         print("Bulk Report Error:", e)
 
-# ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
-@bot.callback_query_handler(func=lambda c: c.data == "rpt_leave_custom")
+# ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
+@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_custom")
 def lv_rpt_custom_prompt(call):
     try:
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id, 
-            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
+            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
         )
         bot.register_next_step_handler(msg, process_custom_leave_report)
     except Exception as e:
@@ -1326,7 +1328,7 @@ def process_custom_leave_report(message):
                 
         bot.send_message(message.chat.id, txt)
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
+        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
         
 # =======================================================
 # ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম (Detailed Logic)
