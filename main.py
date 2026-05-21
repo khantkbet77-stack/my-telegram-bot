@@ -579,7 +579,7 @@ def save_recharge(message):
         pass
 
 # =======================================================
-# ৫. 🩺 SL-OFF-issue (ফাইনাল ২ নম্বর পার্ট - ডাটাবেস সেভিং সহ)
+# ৫. 🩺 SL-OFF-issue (ফাইনাল ২ নম্বর পার্ট - ফিক্সড করা)
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "🩺 SL-OFF-issue")
 def leave_menu(message):
@@ -587,7 +587,7 @@ def leave_menu(message):
     kb = types.InlineKeyboardMarkup(row_width=1)
     kb.add(
         types.InlineKeyboardButton("🤒 অসুস্থ ছুটি", callback_data="lv_sick"), 
-        types.InlineKeyboardButton("⏳ অতিরিক্ত বিরতি সময়", callback_data="lv_extra"), 
+        types.InlineKeyboardButton("⏳ অতিরিক্ত বিরতি সময়", callback_data="lv_extra"), 
         types.InlineKeyboardButton("🆘 ইমারজেন্সি কাজ", callback_data="lv_emg"),
         types.InlineKeyboardButton("🌗 হাফ ডে (Half Day)", callback_data="lv_half")
     )
@@ -595,20 +595,22 @@ def leave_menu(message):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('lv_'))
 def handle_leave(call):
+    bot.answer_callback_query(call.id) # বাটন ক্লিকের ঘড়ি ঘুরানি বন্ধ করার জন্য
+    
     # হাফ ডে-তে ক্লিক করলে আলাদা প্রসেস শুরু হবে
     if call.data == "lv_half":
-        msg = bot.send_message(call.message.chat.id, "📅 <b>হাফ ডে (Half Day) রিকোয়েস্ট:</b>\n\nযে তারিখের জন্য হাফ ডে চাচ্ছেন, সেটি লিখে সেন্ড করুন\n(যেমন: 25-05-2026):")
+        msg = bot.send_message(call.message.chat.id, "📅 <b>হাফ ডে (Half Day) রিকোয়েস্ট:</b>\n\nযে তারিখের জন্য হাফ ডে চাচ্ছেন, সেটি লিখে充ন্ড করুন\n(যেমন: 25-05-2026):")
         bot.register_next_step_handler(msg, process_half_date)
         return
         
-    # আগের অন্যান্য ছুটির প্রসেস
+    # অন্যান্য ছুটির প্রসেস
     if call.data == "lv_sick":
         fmt = "তারিখ: \nবিস্তারিত: \nদিন: "
         mode = "SICK LEAVE"
     elif call.data == "lv_extra":
-        fmt = "তারিখ (DD-MM-YYYY): \nমোট অতিরিক্ত সময় (মিনিট হিসেবে, যেমন- ৩০ বা ৯০): \nকারণ: "
+        fmt = "তারিখ (DD-MM-YYYY): \nমোট অতিরিক্ত সময় (মিনিট হিসেবে, যেমন- ৩০ বা ৯০): \nকারণ: "
         mode = "EXTRA BREAK"
-    else:
+    elif call.data == "lv_emg":
         fmt = "তারিখ: \nকারণ: \nডকুমেন্টস: "
         mode = "EMERGENCY WORK"
         
@@ -616,18 +618,23 @@ def handle_leave(call):
     if mode == "EMERGENCY WORK":
         txt += "\n(স্ক্রিনশট বাধ্যতামূলক)"
         
-    msg = bot.send_message(call.message.chat.id, txt)
+    msg = bot.send_message(call.message.chat.id, txt, parse_mode="HTML")
     bot.register_next_step_handler(msg, lambda ms: save_leave(ms, mode))
 
 def save_leave(message, mode):
     if is_cmd(message): return
+    
+    uid = message.chat.id
+    name = get_user_name(uid)
+    act_kb = get_action_buttons(uid)
+    now_dt = bd_time().date()
+    
+    # ইমারজেন্সি কাজের জন্য স্ক্রিনশট বা ফটো বাধ্যতামূলক চেক
     if mode == "EMERGENCY WORK" and not message.photo:
-        bot.send_message(message.chat.id, "❌ স্ক্রিনশট লাগবে।")
+        bot.send_message(uid, "❌ ইমারজেন্সি কাজের আবেদনের জন্য স্ক্রিনশট (Photo) পাঠানো বাধ্যতামূলক। দয়া করে আবার চেষ্টা করুন।")
         return
         
-    name = get_user_name(message.chat.id)
     cap = clean_text(message.caption if message.photo else message.text)
-    act_kb = get_action_buttons(message.chat.id)
     report = f"🩺 <b>{mode}</b>\n👤 {name}\n📢 {ADMIN_MENTION}\n📝 {cap}"
     
     # অতিরিক্ত বিরতির মিনিট ক্যালকুলেট করার লজিক
@@ -635,7 +642,7 @@ def save_leave(message, mode):
     if mode == "EXTRA BREAK":
         try:
             for line in cap.split('\n'):
-                if "মোট অতিরিক্ত সময়" in line or "সময়" in line:
+                if "মোট অতিরিক্ত সময়" in line or "সময়" in line:
                     mins = int(''.join(filter(str.isdigit, line)))
                     extra_sec = mins * 60
                     break
@@ -643,27 +650,27 @@ def save_leave(message, mode):
             extra_sec = 0
 
     try:
-        # প্রথমে গ্রুপে মেসেজ পাঠানো (যাতে মেসেজ আইডি পাওয়া যায়)
+        # প্রথমে গ্রুপে মেসেজ পাঠানো (ফটো অথবা টেক্সট অনুযায়ী)
         if message.photo:
-            sent_msg = bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE)
+            sent_msg = bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE, parse_mode="HTML")
         else:
-            sent_msg = bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE)
+            sent_msg = bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE, parse_mode="HTML")
         
         # ডাটাবেসে 'Pending' স্ট্যাটাস এবং গ্রুপ মেসেজ আইডি সহ সেভ করা
         conn = get_conn()
         cur = conn.cursor()
-        now_dt = bd_time().date()
         cur.execute("INSERT INTO user_leaves (user_id, name, leave_type, apply_date, details, extra_seconds, status, group_msg_id) VALUES (%s, %s, %s, %s, %s, %s, 'Pending', %s)", 
-                    (message.chat.id, name, mode, now_dt, cap, extra_sec, sent_msg.message_id))
+                    (uid, name, mode, now_dt, cap, extra_sec, sent_msg.message_id))
         conn.commit()
         conn.close()
         
-        bot.send_message(message.chat.id, "✅ আপনার আবেদনটি অ্যাডমিন প্যানেলে পাঠানো হয়েছে। অ্যাডমিন Approve করলে এটি কাউন্ট হবে।")
+        bot.send_message(uid, "✅ আপনার আবেদনটি অ্যাডমিন প্যানেলে পাঠানো হয়েছে। অ্যাডমিন Approve করলে এটি কাউন্ট হবে।")
     except Exception as e:
         print("Save Leave Error:", e)
+        bot.send_message(uid, "❌ রিকোয়েস্টটি ডাটাবেসে সেভ করতে সমস্যা হয়েছে।")
 
 # -------------------------------------------------------
-# 🌗 হাফ ডে (Half Day) এর নতুন লজিক ও বাটন
+# 🌗 হাফ ডে (Half Day) এর লজিক ও বাটন
 # -------------------------------------------------------
 def process_half_date(message):
     if is_cmd(message): return
@@ -674,10 +681,11 @@ def process_half_date(message):
         types.InlineKeyboardButton("☀️ দিন (সকাল ১০:০০ - ১৬:০০)", callback_data=f"hds_day_{date_text}"),
         types.InlineKeyboardButton("🌙 রাত (১৬:০০ - ২২:০০)", callback_data=f"hds_ngt_{date_text}")
     )
-    bot.send_message(message.chat.id, f"📅 তারিখ: <b>{date_text}</b>\n\nএবার আপনার শিফট সিলেক্ট করুন:", reply_markup=kb)
+    bot.send_message(message.chat.id, f"📅 তারিখ: <b>{date_text}</b>\n\nএবার আপনার শিফট সিলেক্ট করুন:", reply_markup=kb, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('hds_'))
 def process_half_shift(call):
+    bot.answer_callback_query(call.id)
     parts = call.data.split('_', 2)
     shift_code = parts[1] 
     date_text = parts[2]
@@ -691,28 +699,30 @@ def process_half_shift(call):
     )
     
     txt = f"⚠️ <b>হাফ ডে শর্তাবলি:</b>\n\nআপনি <b>{date_text}</b> তারিখে <b>{shift_name}</b> শিফটে হাফ ডে ডিউটি করতে চাচ্ছেন।\n\n📌 <i>নোট: এই হাফ ডে ডিউটিতে আপনি বিরতি পাবেন মাত্র ৩০ মিনিট।</i>\n\nআপনি কি রাজি?"
-    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=kb)
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('hdc_'))
 def process_half_confirm(call):
     # ১. যদি ইউজার সরাসরি No বাটনে ক্লিক করে
     if call.data == "hdc_n":
-        return bot.edit_message_text("❌ আপনার হাফ ডে রিকোয়েস্টটি বাতিল করা হয়েছে।", call.message.chat.id, call.message.message_id)
+        bot.answer_callback_query(call.id)
+        return bot.edit_message_text("❌ আপনার হাফ ডে রিকোয়েস্টটি বাতিল করা হয়েছে।", call.message.chat.id, call.message.message_id)
         
     # ২. যদি ইউজার Yes বাটনে ক্লিক করে (ডাটা প্রসেস করা হচ্ছে)
     try:
+        bot.answer_callback_query(call.id)
         parts = call.data.split('_', 3)
         shift_code = parts[2]  # day অথবা ngt
-        date_text = parts[3]   # ইউজারের দেওয়া তারিখ
+        date_text = parts[3]   # ইউজারের দেওয়া তারিখ
         
         shift_name = "দিন (১০:০০ - ১৬:০০)" if shift_code == 'day' else "রাত (১৬:০০ - ২২:০০)"
         name = get_user_name(call.message.chat.id)
         act_kb = get_action_buttons(call.message.chat.id)
         
-        report = f"🌗 <b>HALF DAY REQUEST</b>\n👤 User: {name}\n📢 <b>Admin:</b> {ADMIN_MENTION}\n📅 তারিখ: <b>{date_text}</b>\n⏱️ শিফট: <b>{shift_name}</b>\n📌 নোট: ইউজার ৩০ মিনিট বিরতির শর্তে রাজি হয়েছেন।"
+        report = f"🌗 <b>HALF DAY REQUEST</b>\n👤 User: {name}\n📢 <b>Admin:</b> {ADMIN_MENTION}\n📅 তারিখ: <b>{date_text}</b>\n⏱️ শিফট: <b>{shift_name}</b>\n📌 নোট: ইউজার ৩০ মিনিট বিরতির শর্তে রাজি হয়েছেন।"
         
         # গ্রুপে মেসেজ পাঠানো
-        sent_msg = bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE)
+        sent_msg = bot.send_message(ADMIN_GROUP_ID, report, reply_markup=act_kb, message_thread_id=TOPIC_LEAVE, parse_mode="HTML")
         
         # ডাটাবেসে Pending হিসেবে হাফ ডে সেভ করা
         conn = get_conn()
@@ -724,11 +734,11 @@ def process_half_confirm(call):
         conn.close()
         
         # ইউজারকে বটের ইনবক্সে কনফার্মেশন দেখানো
-        bot.edit_message_text("✅ আপনার হাফ ডে রিকোয়েস্ট পাঠানো হয়েছে। অ্যাডমিন Approve করলে এটি কাউন্ট হবে।", call.message.chat.id, call.message.message_id)
+        bot.edit_message_text("✅ আপনার হাফ ডে রিকোয়েস্ট পাঠানো হয়েছে। অ্যাডমিন Approve করলে এটি কাউন্ট হবে।", call.message.chat.id, call.message.message_id)
         
     except Exception as e:
         print("Save Half Day Error:", e)
-        bot.answer_callback_query(call.id, "❌ প্রসেস করতে সমস্যা হয়েছে! আবার চেষ্টা করুন।")
+        bot.answer_callback_query(call.id, "❌ প্রসেস করতে সমস্যা হয়েছে! আবার চেষ্টা করুন।")
         
 # =======================================================
 # 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (অল-ইন-ওয়ান ফিক্সড)
@@ -1141,22 +1151,29 @@ def process_all_users_custom_report(message):
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
 
 # =======================================================
-# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (ডাটা না থাকলেও ক্র্যাশ করবে না)
+# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (১০০% ফিক্সড ও ক্র্যাশ-প্রুফ)
 # =======================================================
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_check")
 def adm_leave_menu_show(call):
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lv_rpt_single"),
-        types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lv_rpt_all_month"),
-        types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lv_rpt_custom")
-    )
-    bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    try:
+        # 🟢 বাটন ক্লিকের ঘড়ি ঘুরানি সাথে সাথে বন্ধ করার জন্য
+        bot.answer_callback_query(call.id)
+        
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lv_rpt_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lv_rpt_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lv_rpt_custom")
+        )
+        bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
+    except Exception as e:
+        print("Menu Show Error:", e)
 
 # ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট
 @bot.callback_query_handler(func=lambda c: c.data == "lv_rpt_single")
 def lv_rpt_single_list(call):
     try:
+        bot.answer_callback_query(call.id)
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("SELECT DISTINCT user_id, name FROM users WHERE name IS NOT NULL")
@@ -1164,21 +1181,21 @@ def lv_rpt_single_list(call):
         conn.close()
         
         if not users_list:
-            return bot.answer_callback_query(call.id, "❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!", show_alert=True)
+            return bot.edit_message_text("❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!", call.message.chat.id, call.message.message_id)
             
         kb = types.InlineKeyboardMarkup()
         for x in users_list:
             kb.add(types.InlineKeyboardButton(x[1], callback_data=f"lvsng-{x[0]}"))
             
-        bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
+        bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
         print("User List Error:", e)
-        bot.answer_callback_query(call.id, "❌ ইউজার লিস্ট লোড করতে সমস্যা হয়েছে!")
 
 # একক ইউজারের ছুটির মেইন রিপোর্ট দেখানোর ফাংশন
 @bot.callback_query_handler(func=lambda c: c.data.startswith('lvsng-'))
 def lv_rpt_single_show(call):
     try:
+        bot.answer_callback_query(call.id)
         uid = int(call.data.split('-')[1])
         now = bd_time()
         start_month = now.replace(day=1).strftime("%Y-%m-%d")
@@ -1220,15 +1237,15 @@ def lv_rpt_single_show(call):
         txt += f"🆘 ইমারজেন্সি কাজ: {emg} বার\n"
         txt += f"⏳ অতিরিক্ত বিরতি: {extra_cnt} বার (মোট: {ex_h} ঘণ্টা {ex_m} মিনিট)\n"
         
-        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="HTML")
     except Exception as e:
         print("Show Single Leave Error:", e)
-        bot.answer_callback_query(call.id, "❌ ছুটির ডাটা প্রসেস করতে সমস্যা হয়েছে!")
 
 # ২. সবার একসাথে চলতি মাসের ছুটির সামারি
 @bot.callback_query_handler(func=lambda c: c.data == "lv_rpt_all_month")
 def lv_rpt_all_month_show(call):
     try:
+        bot.answer_callback_query(call.id)
         now = bd_time()
         start_month = now.replace(day=1).strftime("%Y-%m-%d")
         
@@ -1249,7 +1266,8 @@ def lv_rpt_all_month_show(call):
         conn.close()
         
         if not rows:
-            return bot.answer_callback_query(call.id, "📊 এই মাসে এখনও কোনো Approved ছুটির ডাটা নেই!", show_alert=True)
+            # যদি কোনো ডাটা না থাকে, ক্র্যাশ না করে ইনলাইন অ্যালার্ট বা সুন্দর মেসেজ দেখাবে
+            return bot.edit_message_text("📊 <b>সবার ছুটির সামারি ({})</b>\n━━━━━━━━━━━━━━━━━━\n\n❌ এই মাসে এখনও কোনো Approved ছুটির ডাটা নেই!".format(now.strftime('%B %Y')), call.message.chat.id, call.message.message_id, parse_mode="HTML")
             
         txt = f"📊 <b>সবার ছুটির সামারি ({now.strftime('%B %Y')})</b>\n⚠️ <i>(Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
         for name, sick, half, emg, ex_cnt, ex_sec in rows:
@@ -1257,19 +1275,22 @@ def lv_rpt_all_month_show(call):
             ex_m = (ex_sec % 3600) // 60
             txt += f"👤 <b>{name}</b>\n🤒 Sick: {sick} | 🌗 Half: {half} | 🆘 Emg: {emg}\n⏳ Extra: {ex_cnt} বার ({ex_h} ঘণ্টা {ex_m} মিনিট)\n\n"
             
-        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="HTML")
     except Exception as e:
         print("Bulk Report Error:", e)
-        bot.answer_callback_query(call.id, "❌ সামারি লোড করতে সমস্যা হয়েছে!")
 
 # ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
 @bot.callback_query_handler(func=lambda c: c.data == "lv_rpt_custom")
 def lv_rpt_custom_prompt(call):
-    msg = bot.send_message(
-        call.message.chat.id, 
-        "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
-    )
-    bot.register_next_step_handler(msg, process_custom_leave_report)
+    try:
+        bot.answer_callback_query(call.id)
+        msg = bot.send_message(
+            call.message.chat.id, 
+            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
+        )
+        bot.register_next_step_handler(msg, process_custom_leave_report)
+    except Exception as e:
+        print("Custom Prompt Error:", e)
 
 def process_custom_leave_report(message):
     if is_cmd(message): return
@@ -1306,7 +1327,7 @@ def process_custom_leave_report(message):
             else:
                 txt += f"• <b>{name}</b> — {dt_str} [{ltype}]\n"
                 
-        bot.send_message(message.chat.id, txt)
+        bot.send_message(message.chat.id, txt, parse_mode="HTML")
     except Exception as e:
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
         
