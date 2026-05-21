@@ -1150,14 +1150,13 @@ def process_all_users_custom_report(message):
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
 
 # =======================================================
-# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (মিক্সিং প্রফেশনাল ফিক্সড)
+# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (টাইমজোন ও কাস্টিং ফিক্সড)
 # =======================================================
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_check")
 def adm_leave_menu_show(call):
     try:
         bot.answer_callback_query(call.id)
         kb = types.InlineKeyboardMarkup(row_width=1)
-        # ডাটা মিক্সিং বন্ধ করতে কলব্যাক নেম সম্পূর্ণ পরিবর্তন করা হলো (adm_leave_ দিয়ে শুরু)
         kb.add(
             types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
             types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
@@ -1167,27 +1166,30 @@ def adm_leave_menu_show(call):
     except Exception as e:
         print("Menu Show Error:", e)
 
-# ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট
+# ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট প্রসেস
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_single")
 def lv_rpt_single_list(call):
     try:
         bot.answer_callback_query(call.id)
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT DISTINCT user_id, name FROM users WHERE name IS NOT NULL")
+        
+        # ইউজার টেবিল থেকে খালি বা নাল ডাটা ফিল্টার করে নিখুঁতভাবে নাম আনা হলো
+        cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL AND name != ''")
         users_list = cur.fetchall()
         conn.close()
         
         if not users_list:
-            return bot.send_message(call.message.chat.id, "❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!")
+            return bot.edit_message_text("❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার বা নামের ডাটা পাওয়া যায়নি!", call.message.chat.id, call.message.message_id)
             
-        kb = types.InlineKeyboardMarkup()
+        kb = types.InlineKeyboardMarkup(row_width=2)
         for x in users_list:
-            kb.add(types.InlineKeyboardButton(x[1], callback_data=f"rpt_single_show-{x[0]}"))
+            kb.add(types.InlineKeyboardButton(str(x[1]), callback_data=f"rpt_single_show-{x[0]}"))
             
         bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("User List Error:", e)
+        bot.send_message(call.message.chat.id, "❌ ইউজার লিস্ট লোড করতে সমস্যা হয়েছে।")
 
 # একক ইউজারের ছুটির মেইন রিপোর্ট দেখানোর ফাংশন
 @bot.callback_query_handler(func=lambda c: c.data.startswith('rpt_single_show-'))
@@ -1201,10 +1203,11 @@ def lv_rpt_single_show(call):
         conn = get_conn()
         cur = conn.cursor()
         
+        # CAST AS DATE ব্যবহার করা হলো যাতে ডাটাবেসের DATE টাইপের সাথে নিখুঁতভাবে ম্যাচ হয়
         cur.execute("""
             SELECT leave_type, COUNT(*), COALESCE(SUM(extra_seconds), 0) 
             FROM user_leaves 
-            WHERE user_id = %s AND apply_date >= %s AND status = 'Approved'
+            WHERE user_id = %s AND apply_date >= CAST(%s AS DATE) AND status = 'Approved'
             GROUP BY leave_type
         """, (uid, start_month))
         rows = cur.fetchall()
@@ -1237,6 +1240,7 @@ def lv_rpt_single_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Show Single Leave Error:", e)
+        bot.send_message(call.message.chat.id, "❌ ছুটির ডাটা প্রসেস করতে টেকনিক্যাল সমস্যা হয়েছে!")
 
 # ২. সবার একসাথে চলতি মাসের ছুটির সামারি
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_all_month")
@@ -1256,14 +1260,14 @@ def lv_rpt_all_month_show(call):
                    COUNT(CASE WHEN leave_type='EXTRA BREAK' THEN 1 END) as extra_cnt,
                    COALESCE(SUM(CASE WHEN leave_type='EXTRA BREAK' THEN extra_seconds ELSE 0 END), 0) as extra_sec
             FROM user_leaves
-            WHERE apply_date >= %s AND status = 'Approved'
+            WHERE apply_date >= CAST(%s AS DATE) AND status = 'Approved'
             GROUP BY name
         """, (start_month,))
         rows = cur.fetchall()
         conn.close()
         
         if not rows:
-            return bot.send_message(call.message.chat.id, "📊 এই মাসে এখনও কোনো Approved ছুটির ডাটা নেই!")
+            return bot.edit_message_text("📊 <b>এই মাসে এখনও কোনো Approved ছুটির ডাটা নেই!</b>\nইউজার ছুটি সাবমিট করার পর অ্যাডমিন গ্রুপ থেকে Approve করলে এখানে শো করবে।", call.message.chat.id, call.message.message_id)
             
         txt = f"📊 <b>সবার ছুটির সামারি ({now.strftime('%B %Y')})</b>\n⚠️ <i>(Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
         for name, sick, half, emg, ex_cnt, ex_sec in rows:
@@ -1274,6 +1278,7 @@ def lv_rpt_all_month_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Bulk Report Error:", e)
+        bot.send_message(call.message.chat.id, "❌ সামারি ডাটা টানতে সমস্যা হয়েছে।")
 
 # ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_custom")
@@ -1282,7 +1287,7 @@ def lv_rpt_custom_prompt(call):
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id, 
-            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
+            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
         )
         bot.register_next_step_handler(msg, process_custom_leave_report)
     except Exception as e:
@@ -1304,7 +1309,7 @@ def process_custom_leave_report(message):
         cur.execute("""
             SELECT name, leave_type, apply_date, extra_seconds 
             FROM user_leaves 
-            WHERE apply_date >= %s AND apply_date <= %s AND status = 'Approved'
+            WHERE apply_date >= CAST(%s AS DATE) AND apply_date <= CAST(%s AS DATE) AND status = 'Approved'
             ORDER BY apply_date ASC
         """, (d1, d2))
         rows = cur.fetchall()
