@@ -731,7 +731,7 @@ def process_half_confirm(call):
         bot.answer_callback_query(call.id, "❌ প্রসেস করতে সমস্যা হয়েছে! আবার চেষ্টা করুন।")
         
 # =======================================================
-# 👑 অ্যাডমিন প্যানেল
+# 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (অল-ইন-ওয়ান ফিক্সড)
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
 def admin_panel_menu(message):
@@ -756,14 +756,18 @@ def handle_adm_callback(call):
     if not is_admin_obj(call.from_user):
         return
         
+    # লোডিং স্পিনার অফ করা
+    try: bot.answer_callback_query(call.id)
+    except: pass
+        
     if call.data == "adm_upd_not":
-        msg = bot.send_message(call.message.chat.id, "📢 আপডেট নোটিশটি লিখুন:")
+        msg = bot.send_message(call.message.chat.id, "📢 <b>আপডেট নোটিশটি লিখুন:</b>")
         bot.register_next_step_handler(msg, broadcast_promo)
         
     elif call.data == "adm_mention":
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT user_id, name FROM users")
+        cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL")
         users_list = cur.fetchall()
         conn.close()
         
@@ -784,7 +788,7 @@ def handle_adm_callback(call):
     elif call.data == "adm_manage":
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT user_id, name FROM users")
+        cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL")
         users_list = cur.fetchall()
         conn.close()
         
@@ -803,39 +807,42 @@ def handle_adm_callback(call):
         )
         bot.edit_message_text("📊 <b>রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
+    # 🟢 [সংশোধিত অংশ] ছুটির রিপোর্ট চেক বাটনে ক্লিক করলে এখন ৩টি মেনু আসবে
+    elif call.data == "adm_leave_check":
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lv_rpt_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lv_rpt_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lv_rpt_custom")
+        )
+        bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
+
 @bot.callback_query_handler(func=lambda c: c.data.startswith("mnt_"))
 def mnt_step_2(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     uid = call.data.split("_")[1]
     msg = bot.send_message(call.message.chat.id, "💬 মেনশন মেসেজ লিখুন (ছবিসহ হতে পারে):")
     bot.register_next_step_handler(msg, lambda m: send_mnt(m, uid))
 
 def send_mnt(message, uid):
-    if is_cmd(message):
-        return
-        
+    if is_cmd(message): return
     txt = f"📩 <b>অ্যাডমিন আপনাকে মেনশন করেছে:</b>\n\n{clean_text(message.caption if message.photo else message.text)}"
-    
     try:
         if message.photo:
             bot.send_photo(uid, message.photo[-1].file_id, caption=txt)
         else:
             bot.send_message(uid, txt)
-            
-        bot.send_message(message.chat.id, "✅ মেনশন পাঠানো হয়েছে।")
-    except Exception as e:
-        pass
+        bot.send_message(message.chat.id, "✅ মেনশন পাঠানো হয়েছে।")
+    except: pass
 
 def broadcast_best(message):
-    if is_cmd(message):
-        return
-        
-    txt = f"🌟 <b>সেরা পারফর্মার!</b> 🌟\n━━━━━━━━━━━━━━━━━━\n{clean_text(message.caption if message.photo else message.text)}"
+    if is_cmd(message): return
+    txt = f"🌟 <b>সেরা পারфর্মার!</b> 🌟\n━━━━━━━━━━━━━━━━━━\n{clean_text(message.caption if message.photo else message.text)}"
     send_to_all(txt, message.photo)
 
 def broadcast_promo(message):
-    if is_cmd(message):
-        return
-        
+    if is_cmd(message): return
     txt = f"📢 <b>নোটিশ:</b>\n━━━━━━━━━━━━━━━━━━\n{clean_text(message.caption if message.photo else message.text)}"
     send_to_all(txt, message.photo)
 
@@ -845,32 +852,29 @@ def send_to_all(txt, photo=None):
     cur.execute("SELECT user_id FROM users")
     users_list = cur.fetchall()
     conn.close()
-    
     for u in users_list:
         try:
-            if photo:
-                bot.send_photo(u[0], photo[-1].file_id, caption=txt)
-            else:
-                bot.send_message(u[0], txt)
-        except Exception as e:
-            pass
+            if photo: bot.send_photo(u[0], photo[-1].file_id, caption=txt)
+            else: bot.send_message(u[0], txt)
+        except: pass
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("del_"))
 def del_u(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     uid = call.data.split("_")[1]
-    
     conn = get_conn()
     cur = conn.cursor()
     cur.execute("DELETE FROM users WHERE user_id=%s", (uid,))
     conn.commit()
     conn.close()
-    
     bot.edit_message_text("✅ ইউজার রিমুভড।", call.message.chat.id, call.message.message_id)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rpt_"))
 def rpt_range(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     uid = call.data.split("_")[1]
-    
     kb = types.InlineKeyboardMarkup(row_width=2)
     kb.add(
         types.InlineKeyboardButton("২৪ ঘণ্টা", callback_data=f"dr_{uid}_1"), 
@@ -878,48 +882,50 @@ def rpt_range(call):
         types.InlineKeyboardButton("১৫ দিন", callback_data=f"dr_{uid}_15"), 
         types.InlineKeyboardButton("৩০ দিন", callback_data=f"dr_{uid}_30")
     )
-    
-    bot.edit_message_text("⏳ সময় নির্বাচন করুন:", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    bot.edit_message_text("⏳ সময় নির্বাচন করুন:", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("dr_"))
 def rpt_final(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     parts = call.data.split("_")
     uid = int(parts[1])
     days = int(parts[2])
-    
     target = (bd_time() - timedelta(days=days-1)).strftime("%Y-%m-%d")
     
     conn = get_conn()
     cur = conn.cursor()
-    
     cur.execute("SELECT name FROM users WHERE user_id=%s", (uid,))
     user_name = cur.fetchone()[0]
-    
     cur.execute("SELECT COALESCE(SUM(total_seconds),0) FROM work_hours WHERE user_id=%s AND date >= %s", (uid, target))
     total_sec = cur.fetchone()[0]
-    
     cur.execute("SELECT COALESCE(SUM(calls_h),0), COALESCE(SUM(nsu_h),0), COUNT(*) FROM hourly_stats WHERE user_id=%s AND date >= %s", (uid, target))
     stats = cur.fetchone()
-    
     conn.close()
     
     h = total_sec // 3600
     m = (total_sec % 3600) // 60
-    
     bot.edit_message_text(f"📊 <b>Report: {user_name}</b>\n⏳ মোট কাজ: {h} ঘণ্টা {m} মিনিট\n📑 Hourly: {stats[2]} বার\n📞 Calls: {stats[0]} | 📉 NSU: {stats[1]}", call.message.chat.id, call.message.message_id)
-    # =======================================================
+
+# =======================================================
 # 📱 রিচার্জ রিপোর্ট সেকশন (Recharge Report Logic)
 # =======================================================
 @bot.callback_query_handler(func=lambda c: c.data == "rech_main_menu")
 def adm_rech_menu(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(types.InlineKeyboardButton("👥 সবার রিপোর্ট (চলতি মাস)", callback_data="rech_all"))
-    kb.add(types.InlineKeyboardButton("👤 নির্দিষ্ট ব্যক্তির (চলতি মাস)", callback_data="rech_users"))
-    kb.add(types.InlineKeyboardButton("📅 কাস্টম তারিখ (Custom Date)", callback_data="rech_custom"))
+    kb.add(
+        types.InlineKeyboardButton("👥 সবার রিপোর্ট (চলতি মাস)", callback_data="rech_all"),
+        types.InlineKeyboardButton("👤 নির্দিষ্ট ব্যক্তির (চলতি মাস)", callback_data="rech_users"),
+        types.InlineKeyboardButton("📅 কাস্টম তারিখ (Custom Date)", callback_data="rech_custom")
+    )
     bot.edit_message_text("📱 <b>রিচার্জ রিপোর্ট প্যানেল:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "rech_all")
 def rech_all_report(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     now = bd_time()
     start_date = now.replace(day=1).strftime("%Y-%m-%d")
     
@@ -930,7 +936,7 @@ def rech_all_report(call):
     conn.close()
     
     if not rows:
-        return bot.answer_callback_query(call.id, "চলতি মাসে কোনো রিচার্জ ডাটা নেই!", show_alert=True)
+        return bot.send_message(call.message.chat.id, " চলিষ্ণু মাসে কোনো রিচার্জ ডাটা নেই!")
         
     txt = f"📊 <b>সবার রিচার্জ রিপোর্ট (চলতি মাস)</b>\n📅 {start_date} থেকে আজ পর্যন্ত\n━━━━━━━━━━━━━━━━━━\n"
     total_amt = 0
@@ -938,11 +944,12 @@ def rech_all_report(call):
         txt += f"👤 {name}: <b>{amt} ৳</b> ({cnt} বার)\n"
         total_amt += amt
     txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>সর্বমোট: {total_amt} ৳</b>"
-    
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
 
 @bot.callback_query_handler(func=lambda c: c.data == "rech_users")
 def rech_users_list(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     conn = get_conn()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT u.user_id, u.name FROM recharges r JOIN users u ON r.user_id = u.user_id")
@@ -950,7 +957,7 @@ def rech_users_list(call):
     conn.close()
     
     if not users_list:
-        return bot.answer_callback_query(call.id, "কোনো ডাটা নেই!", show_alert=True)
+        return bot.send_message(call.message.chat.id, "❌ কোনো ডাটা নেই!")
         
     kb = types.InlineKeyboardMarkup()
     for uid, name in users_list:
@@ -959,6 +966,8 @@ def rech_users_list(call):
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rech_indv_"))
 def rech_indv_report(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     uid = int(call.data.split("_")[2])
     now = bd_time()
     start_date = now.replace(day=1).strftime("%Y-%m-%d")
@@ -972,7 +981,7 @@ def rech_indv_report(call):
     conn.close()
     
     if not rows:
-        return bot.answer_callback_query(call.id, "চলতি মাসে ডাটা নেই!", show_alert=True)
+        return bot.send_message(call.message.chat.id, "❌ চলতি মাসে ডাটা নেই!")
         
     txt = f"📊 <b>রিচার্জ বিস্তারিত: {name}</b>\n📅 চলতি মাস\n━━━━━━━━━━━━━━━━━━\n"
     total = 0
@@ -980,29 +989,28 @@ def rech_indv_report(call):
         txt += f"▪️ {d} | {t} ➔ <b>{a} ৳</b>\n"
         total += a
     txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>মোট: {total} ৳</b>"
-    
     bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
 
 @bot.callback_query_handler(func=lambda c: c.data == "rech_custom")
 def rech_custom_prompt(call):
+    try: bot.answer_callback_query(call.id)
+    except: pass
     msg = bot.send_message(
         call.message.chat.id, 
-        "📅 <b>তারিখ অনুযায়ী রিপোর্ট:</b>\n\nদয়া করে শুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
+        "📅 <b>তারিখ অনুযায়ী রিপোর্ট:</b>\n\nদয়া করে শুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
     )
     bot.register_next_step_handler(msg, process_custom_date_report)
 
 def process_custom_date_report(message):
     if is_cmd(message): return
-    
     try:
         parts = message.text.strip().split()
         if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। দয়া করে মাঝে একটি স্পেস দিয়ে দুটি তারিখ লিখুন (যেমন: 01-05-2026 15-05-2026)।")
+            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। (যেমন: 01-05-2026 15-05-2026)।")
             return
             
         d1_obj = datetime.strptime(parts[0], "%d-%m-%Y")
         d2_obj = datetime.strptime(parts[1], "%d-%m-%Y")
-        
         start_db = d1_obj.strftime("%Y-%m-%d")
         end_db = d2_obj.strftime("%Y-%m-%d")
         
@@ -1024,9 +1032,8 @@ def process_custom_date_report(message):
             
         txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>সর্বমোট: {total_amt} ৳</b>"
         bot.send_message(message.chat.id, txt)
-        
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দয়া করে দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন।")
+        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
         
 # =======================================================
 # 📋 অ্যাডমিন রিপোর্ট চেক প্যানেল (৩টি ভিন্ন অপশন)
