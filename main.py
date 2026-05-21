@@ -1134,7 +1134,7 @@ def process_all_users_custom_report(message):
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
 
 # =======================================================
-# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (Approved ডাটা ফিল্টার সহ)
+# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (ডাটা না থাকলেও ক্র্যাশ করবে না)
 # =======================================================
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_check")
 def adm_leave_menu_show(call):
@@ -1146,92 +1146,116 @@ def adm_leave_menu_show(call):
     )
     bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
+# ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট
 @bot.callback_query_handler(func=lambda c: c.data == "lv_rpt_single")
 def lv_rpt_single_list(call):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT DISTINCT user_id, name FROM users")
-    users_list = cur.fetchall()
-    conn.close()
-    kb = types.InlineKeyboardMarkup()
-    for x in users_list:
-        kb.add(types.InlineKeyboardButton(x[1], callback_data=f"lvsng_{x[0]}"))
-    bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith('lvsng_'))
-def lv_rpt_single_show(call):
-    uid = int(call.data.split('_')[1])
-    now = bd_time()
-    start_month = now.replace(day=1).strftime("%Y-%m-%d")
-    
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT leave_type, COUNT(*), COALESCE(SUM(extra_seconds), 0) 
-        FROM user_leaves 
-        WHERE user_id = %s AND apply_date >= %s AND status = 'Approved'
-        GROUP BY leave_type
-    """, (uid, start_month))
-    rows = cur.fetchall()
-    
-    cur.execute("SELECT name FROM users WHERE user_id = %s", (uid,))
-    u_row = cur.fetchone()
-    uname = u_row[0] if u_row else "Unknown"
-    conn.close()
-    
-    txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>(শুধুমাত্র Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
-    
-    sick, half, emg, extra_cnt, extra_sec = 0, 0, 0, 0, 0
-    for ltype, count, ex_sec in rows:
-        if ltype == "SICK LEAVE": sick = count
-        elif ltype == "HALF DAY": half = count
-        elif ltype == "EMERGENCY WORK": emg = count
-        elif ltype == "EXTRA BREAK": 
-            extra_cnt = count
-            extra_sec = ex_sec
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT user_id, name FROM users WHERE name IS NOT NULL")
+        users_list = cur.fetchall()
+        conn.close()
+        
+        if not users_list:
+            return bot.answer_callback_query(call.id, "❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!", show_alert=True)
             
-    ex_h = extra_sec // 3600
-    ex_m = (extra_sec % 3600) // 60
-    
-    txt += f"🤒 অসুস্থ ছুটি: {sick} বার\n"
-    txt += f"🌗 হাফ ডে (Half Day): {half} বার\n"
-    txt += f"🆘 ইমারজেন্সি কাজ: {emg} বার\n"
-    txt += f"⏳ অতিরিক্ত বিরতি: {extra_cnt} বার (মোট: {ex_h} ঘণ্টা {ex_m} মিনিট)\n"
-    
-    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+        kb = types.InlineKeyboardMarkup()
+        for x in users_list:
+            kb.add(types.InlineKeyboardButton(x[1], callback_data=f"lvsng-{x[0]}"))
+            
+        bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    except Exception as e:
+        print("User List Error:", e)
+        bot.answer_callback_query(call.id, "❌ ইউজার লিস্ট লোড করতে সমস্যা হয়েছে!")
 
+# একক ইউজারের ছুটির মেইন রিপোর্ট দেখানোর ফাংশন
+@bot.callback_query_handler(func=lambda c: c.data.startswith('lvsng-'))
+def lv_rpt_single_show(call):
+    try:
+        uid = int(call.data.split('-')[1])
+        now = bd_time()
+        start_month = now.replace(day=1).strftime("%Y-%m-%d")
+        
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Approved ডাটা খোঁজা
+        cur.execute("""
+            SELECT leave_type, COUNT(*), COALESCE(SUM(extra_seconds), 0) 
+            FROM user_leaves 
+            WHERE user_id = %s AND apply_date >= %s AND status = 'Approved'
+            GROUP BY leave_type
+        """, (uid, start_month))
+        rows = cur.fetchall()
+        
+        cur.execute("SELECT name FROM users WHERE user_id = %s", (uid,))
+        u_row = cur.fetchone()
+        uname = u_row[0] if u_row else "Unknown User"
+        conn.close()
+        
+        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>(শুধুমাত্র Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
+        
+        sick, half, emg, extra_cnt, extra_sec = 0, 0, 0, 0, 0
+        if rows:
+            for ltype, count, ex_sec in rows:
+                if ltype == "SICK LEAVE": sick = count
+                elif ltype == "HALF DAY": half = count
+                elif ltype == "EMERGENCY WORK": emg = count
+                elif ltype == "EXTRA BREAK": 
+                    extra_cnt = count
+                    extra_sec = ex_sec
+                    
+        ex_h = extra_sec // 3600
+        ex_m = (extra_sec % 3600) // 60
+        
+        txt += f"🤒 অসুস্থ ছুটি: {sick} বার\n"
+        txt += f"🌗 হাফ ডে (Half Day): {half} বার\n"
+        txt += f"🆘 ইমারজেন্সি কাজ: {emg} বার\n"
+        txt += f"⏳ অতিরিক্ত বিরতি: {extra_cnt} বার (মোট: {ex_h} ঘণ্টা {ex_m} মিনিট)\n"
+        
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+    except Exception as e:
+        print("Show Single Leave Error:", e)
+        bot.answer_callback_query(call.id, "❌ ছুটির ডাটা প্রসেস করতে সমস্যা হয়েছে!")
+
+# ২. সবার একসাথে চলতি মাসের ছুটির সামারি
 @bot.callback_query_handler(func=lambda c: c.data == "lv_rpt_all_month")
 def lv_rpt_all_month_show(call):
-    now = bd_time()
-    start_month = now.replace(day=1).strftime("%Y-%m-%d")
-    
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT name,
-               COUNT(CASE WHEN leave_type='SICK LEAVE' THEN 1 END) as sick,
-               COUNT(CASE WHEN leave_type='HALF DAY' THEN 1 END) as half,
-               COUNT(CASE WHEN leave_type='EMERGENCY WORK' THEN 1 END) as emg,
-               COUNT(CASE WHEN leave_type='EXTRA BREAK' THEN 1 END) as extra_cnt,
-               COALESCE(SUM(CASE WHEN leave_type='EXTRA BREAK' THEN extra_seconds ELSE 0 END), 0) as extra_sec
-        FROM user_leaves
-        WHERE apply_date >= %s AND status = 'Approved'
-        GROUP BY name
-    """, (start_month,))
-    rows = cur.fetchall()
-    conn.close()
-    
-    if not rows:
-        return bot.answer_callback_query(call.id, "এই মাসে কোনো Approved ছুটির ডাটা নেই!", show_alert=True)
+    try:
+        now = bd_time()
+        start_month = now.replace(day=1).strftime("%Y-%m-%d")
         
-    txt = f"📊 <b>সবার ছুটির সামারি ({now.strftime('%B %Y')})</b>\n⚠️ <i>(Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
-    for name, sick, half, emg, ex_cnt, ex_sec in rows:
-        ex_h = ex_sec // 3600
-        ex_m = (ex_sec % 3600) // 60
-        txt += f"👤 <b>{name}</b>\n🤒 Sick: {sick} | 🌗 Half: {half} | 🆘 Emg: {emg}\n⏳ Extra: {ex_cnt} বার ({ex_h}ঘণ্টা {ex_m}মিনিট)\n\n"
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT name,
+                   COUNT(CASE WHEN leave_type='SICK LEAVE' THEN 1 END) as sick,
+                   COUNT(CASE WHEN leave_type='HALF DAY' THEN 1 END) as half,
+                   COUNT(CASE WHEN leave_type='EMERGENCY WORK' THEN 1 END) as emg,
+                   COUNT(CASE WHEN leave_type='EXTRA BREAK' THEN 1 END) as extra_cnt,
+                   COALESCE(SUM(CASE WHEN leave_type='EXTRA BREAK' THEN extra_seconds ELSE 0 END), 0) as extra_sec
+            FROM user_leaves
+            WHERE apply_date >= %s AND status = 'Approved'
+            GROUP BY name
+        """, (start_month,))
+        rows = cur.fetchall()
+        conn.close()
         
-    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+        if not rows:
+            return bot.answer_callback_query(call.id, "📊 এই মাসে এখনও কোনো Approved ছুটির ডাটা নেই!", show_alert=True)
+            
+        txt = f"📊 <b>সবার ছুটির সামারি ({now.strftime('%B %Y')})</b>\n⚠️ <i>(Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
+        for name, sick, half, emg, ex_cnt, ex_sec in rows:
+            ex_h = ex_sec // 3600
+            ex_m = (ex_sec % 3600) // 60
+            txt += f"👤 <b>{name}</b>\n🤒 Sick: {sick} | 🌗 Half: {half} | 🆘 Emg: {emg}\n⏳ Extra: {ex_cnt} বার ({ex_h} ঘণ্টা {ex_m} মিনিট)\n\n"
+            
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+    except Exception as e:
+        print("Bulk Report Error:", e)
+        bot.answer_callback_query(call.id, "❌ সামারি লোড করতে সমস্যা হয়েছে!")
 
+# ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
 @bot.callback_query_handler(func=lambda c: c.data == "lv_rpt_custom")
 def lv_rpt_custom_prompt(call):
     msg = bot.send_message(
