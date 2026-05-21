@@ -740,7 +740,7 @@ def process_half_confirm(call):
         bot.answer_callback_query(call.id, "❌ প্রসেস করতে সমস্যা হয়েছে! আবার চেষ্টা করুন।")
         
 # =======================================================
-# 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (অল-ইন-ওয়ান ফিক্সড)
+# 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (১০০% জ্যাম-ফ্রি চূড়ান্ত সংস্করণ)
 # =======================================================
 @bot.message_handler(func=lambda m: m.text == "👑 Admin Panel")
 def admin_panel_menu(message):
@@ -765,7 +765,6 @@ def handle_adm_callback(call):
     if not is_admin_obj(call.from_user):
         return
         
-    # লোডিং স্পিনার অফ করা
     try: bot.answer_callback_query(call.id)
     except: pass
         
@@ -816,13 +815,13 @@ def handle_adm_callback(call):
         )
         bot.edit_message_text("📊 <b>রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
-    # 🟢 [সংশোধিত অংশ] ছুটির রিপোর্ট চেক বাটনে ক্লিক করলে এখন ৩টি মেনু আসবে
+    # 🟢 কলব্যাক ডাটা 'lvrpt_' দিয়ে আলাদা করা হলো যেন উপরের বা নিচের কোনো হ্যান্ডলারের সাথে ক্ল্যাশ না করে
     elif call.data == "adm_leave_check":
         kb = types.InlineKeyboardMarkup(row_width=1)
         kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="adm_leave_custom")
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lvrpt_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lvrpt_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lvrpt_custom")
         )
         bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
 
@@ -847,7 +846,7 @@ def send_mnt(message, uid):
 
 def broadcast_best(message):
     if is_cmd(message): return
-    txt = f"🌟 <b>সেরা পারфর্মার!</b> 🌟\n━━━━━━━━━━━━━━━━━━\n{clean_text(message.caption if message.photo else message.text)}"
+    txt = f"🌟 <b>সেরা পারফর্মার!</b> 🌟\n━━━━━━━━━━━━━━━━━━\n{clean_text(message.caption if message.photo else message.text)}"
     send_to_all(txt, message.photo)
 
 def broadcast_promo(message):
@@ -977,7 +976,7 @@ def rech_users_list(call):
 def rech_indv_report(call):
     try: bot.answer_callback_query(call.id)
     except: pass
-    uid = int(call.data.split("_")[2])
+    uid = int(call.data.split('_')[2])
     now = bd_time()
     start_date = now.replace(day=1).strftime("%Y-%m-%d")
     
@@ -1006,7 +1005,7 @@ def rech_custom_prompt(call):
     except: pass
     msg = bot.send_message(
         call.message.chat.id, 
-        "📅 <b>তারিখ অনুযায়ী রিপোর্ট:</b>\n\nদয়া করে শুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
+        "📅 <b>তারিখ অনুযায়ী রিপোর্ট:</b>\n\nদয়া করে শুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-跨াস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
     )
     bot.register_next_step_handler(msg, process_custom_date_report)
 
@@ -1015,7 +1014,7 @@ def process_custom_date_report(message):
     try:
         parts = message.text.strip().split()
         if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। (যেমন: 01-05-2026 15-05-2026)।")
+            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। (যেমন: 01-05-2026 15-05-2026)।")
             return
             
         d1_obj = datetime.strptime(parts[0], "%d-%m-%Y")
@@ -1042,155 +1041,90 @@ def process_custom_date_report(message):
         txt += f"━━━━━━━━━━━━━━━━━━\n💰 <b>সর্বমোট: {total_amt} ৳</b>"
         bot.send_message(message.chat.id, txt)
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
+        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। (DD-MM-YYYY)")
         
 # =======================================================
-# 📋 অ্যাডমিন রিপোর্ট চেক প্যানেল (৩টি ভিন্ন অপশন)
+# 📋 পুরোনো সাধারণ রিপোর্ট হ্যান্ডলার লিংক সমূহ
 # =======================================================
-
-# ১. একজন একজন করে দেখার জন্য ইউজার লিস্ট নিয়ে আসার ফাংশন
 @bot.callback_query_handler(func=lambda c: c.data == "chk_mode_single")
-def rpt_mode_single_list(call):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT user_id, name FROM users")
-    users_list = cur.fetchall()
-    conn.close()
-    
-    kb = types.InlineKeyboardMarkup()
-    for x in users_list:
-        kb.add(types.InlineKeyboardButton(x[1], callback_data=f"rpt_{x[0]}"))
-    bot.edit_message_text("👤 কার রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
-
-# ২. সবার আজকের রিপোর্ট একসাথে দেখার ফাংশন
-@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_all_today")
-def rpt_mode_all_today_show(call):
-    now = bd_time()
-    d_str = now.strftime("%Y-%m-%d")
-    disp_date = now.strftime("%d %b, %Y")
-    
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT u.name, 
-               COALESCE(w.total_seconds, 0),
-               (SELECT COUNT(*) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s),
-               (SELECT COALESCE(SUM(calls_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s),
-               (SELECT COALESCE(SUM(nsu_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s)
-        FROM users u 
-        LEFT JOIN work_hours w ON u.user_id = w.user_id AND w.date = %s
-        WHERE w.total_seconds > 0 OR EXISTS (SELECT 1 FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s)
-    """, (d_str, d_str, d_str, d_str, d_str))
-    rows = cur.fetchall()
-    conn.close()
-    
-    if not rows:
-        return bot.answer_callback_query(call.id, "আজকে এখনো কোনো কাজের ডাটা নেই!", show_alert=True)
-        
-    txt = f"📊 <b>সবার আজকের রিপোর্ট</b>\n📅 তারিখ: {disp_date}\n━━━━━━━━━━━━━━━━━━\n"
-    for name, sec, h_count, calls, nsu in rows:
-        h = sec // 3600
-        m = (sec % 3600) // 60
-        txt += f"👤 <b>{name}</b>\n⏳ কাজ: {h} ঘণ্টা {m} মিনিট | 📑 রিপোর্ট: {h_count}টি\n📞 Call: {calls} | 📉 NSU: {nsu}\n\n"
-        
-    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
-
-# ৩. কাস্টম তারিখ অনুযায়ী সবার রিপোর্ট একসাথে দেখার প্রম্পট ও প্রসেস ফাংশন
-@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_all_custom")
-def rpt_mode_all_custom_prompt(call):
-    msg = bot.send_message(
-        call.message.chat.id, 
-        "📅 <b>সবার কাস্টম তারিখের রিপোর্ট:</b>\n\nশুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 15-05-2026"
-    )
-    bot.register_next_step_handler(msg, process_all_users_custom_report)
-
-def process_all_users_custom_report(message):
-    if is_cmd(message): return
-    
+def legacy_single_list(call):
     try:
-        parts = message.text.strip().split()
-        if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। মাঝে স্পেস দিয়ে দুটি তারিখ করুন (যেমন: 01-05-2026 15-05-2026)।")
-            return
-            
-        d1_obj = datetime.strptime(parts[0], "%d-%m-%Y")
-        d2_obj = datetime.strptime(parts[1], "%d-%m-%Y")
-        start_db = d1_obj.strftime("%Y-%m-%d")
-        end_db = d2_obj.strftime("%Y-%m-%d")
-        
+        bot.answer_callback_query(call.id)
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT user_id, name FROM users")
+        users_list = cur.fetchall()
+        conn.close()
+        kb = types.InlineKeyboardMarkup()
+        for x in users_list:
+            kb.add(types.InlineKeyboardButton(x[1], callback_data=f"rpt_{x[0]}"))
+        bot.edit_message_text("👤 কার রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
+    except: pass
+
+@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_all_today")
+def legacy_all_today(call):
+    try:
+        bot.answer_callback_query(call.id)
+        now = bd_time()
+        d_str = now.strftime("%Y-%m-%d")
+        disp_date = now.strftime("%d %b, %Y")
         conn = get_conn()
         cur = conn.cursor()
         cur.execute("""
-            SELECT u.name, 
-                   COALESCE(SUM(w.total_seconds), 0),
-                   (SELECT COUNT(*) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s),
-                   (SELECT COALESCE(SUM(calls_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s),
-                   (SELECT COALESCE(SUM(nsu_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s)
-            FROM users u
-            LEFT JOIN work_hours w ON u.user_id = w.user_id AND w.date >= %s AND w.date <= %s
-            GROUP BY u.user_id, u.name
-            HAVING SUM(w.total_seconds) > 0 OR EXISTS (SELECT 1 FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date >= %s AND h.date <= %s)
-        """, (start_db, end_db, start_db, end_db, start_db, end_db, start_db, end_db, start_db, end_db))
+            SELECT u.name, COALESCE(w.total_seconds, 0),
+                   (SELECT COUNT(*) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s),
+                   (SELECT COALESCE(SUM(calls_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s),
+                   (SELECT COALESCE(SUM(nsu_h), 0) FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s)
+            FROM users u LEFT JOIN work_hours w ON u.user_id = w.user_id AND w.date = %s
+            WHERE w.total_seconds > 0 OR EXISTS (SELECT 1 FROM hourly_stats h WHERE h.user_id = u.user_id AND h.date = %s)
+        """, (d_str, d_str, d_str, d_str, d_str))
         rows = cur.fetchall()
         conn.close()
-        
         if not rows:
-            bot.send_message(message.chat.id, f"📅 <b>{parts[0]}</b> থেকে <b>{parts[1]}</b> এর মধ্যে কোনো রিপোর্ট ডাটা নেই!")
+            bot.edit_message_text("আজকে এখনো কোনো কাজের ডাটা নেই!", call.message.chat.id, call.message.message_id)
             return
-            
-        txt = f"📊 <b>সবার কাস্টম রিপোর্ট ({parts[0]} থেকে {parts[1]})</b>\n━━━━━━━━━━━━━━━━━━\n"
+        txt = f"📊 <b>সবার আজকের রিপোর্ট</b>\n📅 তারিখ: {disp_date}\n━━━━━━━━━━━━━━━━━━\n"
         for name, sec, h_count, calls, nsu in rows:
             h = sec // 3600
             m = (sec % 3600) // 60
-            txt += f"👤 <b>{name}</b>\n⏳ মোট কাজ: {h} ঘণ্টা {m} মিনিট | 📑 রিপোর্ট: {h_count}টি\n📞 Call: {calls} | 📉 NSU: {nsu}\n\n"
-            
-        bot.send_message(message.chat.id, txt)
-        
-    except Exception as e:
-        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
+            txt += f"👤 <b>{name}</b>\n⏳ কাজ: {h} ঘণ্টা {m} মিনিট | 📑 রিপোর্ট: {h_count}টি\n📞 Call: {calls} | 📉 NSU: {nsu}\n\n"
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
+    except: pass
 
-# =======================================================
-# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (স্ট্রিং ফরম্যাট - ১০০% জ্যাম ফ্রি)
-# =======================================================
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_check")
-def adm_leave_menu_show(call):
+@bot.callback_query_handler(func=lambda c: c.data == "chk_mode_all_custom")
+def legacy_all_custom(call):
     try:
         bot.answer_callback_query(call.id)
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="adm_leave_custom")
-        )
-        bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
-    except Exception as e:
-        print("Menu Show Error:", e)
+        msg = bot.send_message(call.message.chat.id, "📅 <b>সবার কাস্টম তারিখের রিপোর্ট:</b>\n\nশুরুর তারিখ এবং শেষের তারিখ লিখে সেন্ড করুন।\n(যেমন: 01-05-2026 15-05-2026)")
+        bot.register_next_step_handler(msg, process_all_users_custom_report)
+    except: pass
+
+# =======================================================
+# 🩺 ৪. নতুন ছুটির রিপোর্ট হ্যান্ডলিং লজিক (১০০% জ্যাম ফ্রি)
+# =======================================================
 
 # ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট প্রসেস
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_single")
+@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_single")
 def lv_rpt_single_list(call):
     try:
         bot.answer_callback_query(call.id)
         conn = get_conn()
         cur = conn.cursor()
-        
-        # ইউজার লিস্ট টানার একদম সহজ লজিক
         cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL")
         users_list = cur.fetchall()
         conn.close()
         
         if not users_list:
-            return bot.edit_message_text("❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!", call.message.chat.id, call.message.message_id)
+            return bot.edit_message_text("❌ সিস্টেমে কোনো রেজিস্টার্ড ইউজার পাওয়া যায়নি!", call.message.chat.id, call.message.message_id)
             
         kb = types.InlineKeyboardMarkup(row_width=2)
         for x in users_list:
-            if x[1]: # নাম থাকলে বাটন এড হবে
+            if x[1]:
                 kb.add(types.InlineKeyboardButton(str(x[1]), callback_data=f"rpt_single_show-{x[0]}"))
             
         bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("User List Error:", e)
-        bot.edit_message_text("❌ ইউজার লিস্ট লোড করতে সমস্যা হয়েছে।", call.message.chat.id, call.message.message_id)
 
 # একক ইউজারের ছুটির মেইন রিপোর্ট দেখানোর ফাংশন
 @bot.callback_query_handler(func=lambda c: c.data.startswith('rpt_single_show-'))
@@ -1199,14 +1133,10 @@ def lv_rpt_single_show(call):
         bot.answer_callback_query(call.id)
         uid = int(call.data.split('-')[1])
         now = bd_time()
-        
-        # ডেট অবজেক্টের ঝামেলা এড়াতে সরাসরি টেক্সট ফরম্যাটে চলতি মাসের শুরু নেওয়া হলো
         start_month_str = now.replace(day=1).strftime("%Y-%m-%d")
         
         conn = get_conn()
         cur = conn.cursor()
-        
-        # ডেট কাস্টিং বাদ দিয়ে একদম সহজ কোয়েরি
         cur.execute("""
             SELECT leave_type, COUNT(*), COALESCE(SUM(extra_seconds), 0) 
             FROM user_leaves 
@@ -1243,10 +1173,9 @@ def lv_rpt_single_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Show Single Leave Error:", e)
-        bot.edit_message_text("❌ ছুটির ডাটা প্রসেস করতে টেকনিক্যাল সমস্যা হয়েছে!", call.message.chat.id, call.message.message_id)
 
 # ২. সবার একসাথে চলতি মাসের ছুটির সামারি
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_all_month")
+@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_all_month")
 def lv_rpt_all_month_show(call):
     try:
         bot.answer_callback_query(call.id)
@@ -1255,8 +1184,6 @@ def lv_rpt_all_month_show(call):
         
         conn = get_conn()
         cur = conn.cursor()
-        
-        # সহজ স্ট্রিং ম্যাচিং কোয়েরি
         cur.execute("""
             SELECT name,
                    COUNT(CASE WHEN leave_type='SICK LEAVE' THEN 1 END) as sick,
@@ -1283,10 +1210,9 @@ def lv_rpt_all_month_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Bulk Report Error:", e)
-        bot.edit_message_text("❌ সামারি ডাটা টানতে সমস্যা হয়েছে।", call.message.chat.id, call.message.message_id)
 
-# ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_custom")
+# ⚠️ কাস্টম ডেট ফিক্সড হ্যান্ডলার
+@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_custom")
 def lv_rpt_custom_prompt(call):
     try:
         bot.answer_callback_query(call.id)
@@ -1297,47 +1223,6 @@ def lv_rpt_custom_prompt(call):
         bot.register_next_step_handler(msg, process_custom_leave_report)
     except Exception as e:
         print("Custom Prompt Error:", e)
-
-def process_custom_leave_report(message):
-    if is_cmd(message): return
-    try:
-        parts = message.text.strip().split()
-        if len(parts) != 2:
-            bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল। (যেমন: 01-05-2026 20-05-2026)")
-            return
-            
-        d1 = datetime.strptime(parts[0], "%d-%m-%Y").strftime("%Y-%m-%d")
-        d2 = datetime.strptime(parts[1], "%d-%m-%Y").strftime("%Y-%m-%d")
-        
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT name, leave_type, apply_date, extra_seconds 
-            FROM user_leaves 
-            WHERE apply_date >= %s AND apply_date <= %s AND status = 'Approved'
-            ORDER BY apply_date ASC
-        """, (d1, d2))
-        rows = cur.fetchall()
-        conn.close()
-        
-        if not rows:
-            bot.send_message(message.chat.id, "📅 এই তারিখের মধ্যে কোনো Approved ছুটির ডাটা নেই।")
-            return
-            
-        txt = f"📊 <b>কাস্টম ছুটির রিপোর্ট ({parts[0]} থেকে {parts[1]})</b>\n━━━━━━━━━━━━━━━━━━\n"
-        for name, ltype, ldate, ex_sec in rows:
-            # ডেট অবজেক্ট না বানিয়ে সরাসরি স্ট্রিং/টেক্সট হিসেবে প্রিন্ট করা হলো
-            dt_str = str(ldate)
-            if ltype == "EXTRA BREAK":
-                ex_m = ex_sec // 60
-                txt += f"• <b>{name}</b> — {dt_str} [⏳ Extra Break: {ex_m} মিনিট]\n"
-            else:
-                txt += f"• <b>{name}</b> — {dt_str} [{ltype}]\n"
-                
-        bot.send_message(message.chat.id, txt)
-    except Exception as e:
-        print("Custom Report Process Error:", e)
-        bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয় অথবা প্রসেস করতে সমস্যা হয়েছে। (DD-MM-YYYY)")
         
 # =======================================================
 # ⏰ অটোমেশন ও ওয়ার্নিং সিস্টেম (Detailed Logic)
