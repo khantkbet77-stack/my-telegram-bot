@@ -1150,31 +1150,30 @@ def process_all_users_custom_report(message):
         bot.send_message(message.chat.id, "❌ তারিখের ফরম্যাট সঠিক নয়। দিন-মাস-বছর (DD-MM-YYYY) হিসেবে দিন এবং মাঝে একটি স্পেস দিন।")
 
 # =======================================================
-# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (টাইমজোন ও কাস্টিং ফিক্সড)
+# 👑 অ্যাডমিন ছুটির রিপোর্ট চেক প্যানেল (কলব্যাক জ্যাম ১০০% ফিক্সড)
 # =======================================================
 @bot.callback_query_handler(func=lambda c: c.data == "adm_leave_check")
 def adm_leave_menu_show(call):
     try:
         bot.answer_callback_query(call.id)
         kb = types.InlineKeyboardMarkup(row_width=1)
+        # জ্যাম এড়াতে কলব্যাক আইডি সম্পূর্ণ আলাদা (lvrpt_) করা হলো
         kb.add(
-            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="adm_leave_single"),
-            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="adm_leave_all_month"),
-            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="adm_leave_custom")
+            types.InlineKeyboardButton("👤 একজন একজন করে (ছুটি)", callback_data="lvrpt_single"),
+            types.InlineKeyboardButton("👥 সবার একসাথে (চলতি মাস)", callback_data="lvrpt_all_month"),
+            types.InlineKeyboardButton("📅 কাস্টম তারিখ (ছুটির রিপোর্ট)", callback_data="lvrpt_custom")
         )
         bot.edit_message_text("🩺 <b>ছুটি ও হাফ ডে রিপোর্ট দেখার ধরন বেছে নিন:</b>", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("Menu Show Error:", e)
 
 # ১. একজন একজন করে ছুটি দেখার জন্য ইউজার লিস্ট প্রসেস
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_single")
+@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_single")
 def lv_rpt_single_list(call):
     try:
         bot.answer_callback_query(call.id)
         conn = get_conn()
         cur = conn.cursor()
-        
-        # ইউজার টেবিল থেকে খালি বা নাল ডাটা ফিল্টার করে নিখুঁতভাবে নাম আনা হলো
         cur.execute("SELECT user_id, name FROM users WHERE name IS NOT NULL AND name != ''")
         users_list = cur.fetchall()
         conn.close()
@@ -1189,7 +1188,6 @@ def lv_rpt_single_list(call):
         bot.edit_message_text("👤 কার ছুটির রিপোর্ট দেখতে চান?", call.message.chat.id, call.message.message_id, reply_markup=kb)
     except Exception as e:
         print("User List Error:", e)
-        bot.send_message(call.message.chat.id, "❌ ইউজার লিস্ট লোড করতে সমস্যা হয়েছে।")
 
 # একক ইউজারের ছুটির মেইন রিপোর্ট দেখানোর ফাংশন
 @bot.callback_query_handler(func=lambda c: c.data.startswith('rpt_single_show-'))
@@ -1202,8 +1200,6 @@ def lv_rpt_single_show(call):
         
         conn = get_conn()
         cur = conn.cursor()
-        
-        # CAST AS DATE ব্যবহার করা হলো যাতে ডাটাবেসের DATE টাইপের সাথে নিখুঁতভাবে ম্যাচ হয়
         cur.execute("""
             SELECT leave_type, COUNT(*), COALESCE(SUM(extra_seconds), 0) 
             FROM user_leaves 
@@ -1217,7 +1213,7 @@ def lv_rpt_single_show(call):
         uname = u_row[0] if u_row else "Unknown User"
         conn.close()
         
-        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>(শুধুমাত্র Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
+        txt = f"📑 <b>ছুটির রিপোর্ট: {uname}</b>\n📅 চলতি মাস: {now.strftime('%B %Y')}\n⚠️ <i>( can't Approved ছুটির হিসাব)</i>\n━━━━━━━━━━━━━━━━━━\n"
         
         sick, half, emg, extra_cnt, extra_sec = 0, 0, 0, 0, 0
         if rows:
@@ -1240,10 +1236,9 @@ def lv_rpt_single_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Show Single Leave Error:", e)
-        bot.send_message(call.message.chat.id, "❌ ছুটির ডাটা প্রসেস করতে টেকনিক্যাল সমস্যা হয়েছে!")
 
 # ২. সবার একসাথে চলতি মাসের ছুটির সামারি
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_all_month")
+@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_all_month")
 def lv_rpt_all_month_show(call):
     try:
         bot.answer_callback_query(call.id)
@@ -1278,16 +1273,15 @@ def lv_rpt_all_month_show(call):
         bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
     except Exception as e:
         print("Bulk Report Error:", e)
-        bot.send_message(call.message.chat.id, "❌ সামারি ডাটা টানতে সমস্যা হয়েছে।")
 
 # ৩. কাস্টম তারিখ অনুযায়ী ছুটির রিপোর্ট
-@bot.callback_query_handler(func=lambda c: c.data == "adm_leave_custom")
+@bot.callback_query_handler(func=lambda c: c.data == "lvrpt_custom")
 def lv_rpt_custom_prompt(call):
     try:
         bot.answer_callback_query(call.id)
         msg = bot.send_message(
             call.message.chat.id, 
-            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> দিন-মাস-বছর দিন-মাস-বছর\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
+            "📅 <b>কাস্টম ছুটির রিপোর্ট:</b>\n\nশুরুর ও শেষের তারিখ স্পেস দিয়ে লিখুন।\n\n👉 <b>ফরম্যাট:</b> DD-MM-YYYY DD-MM-YYYY\n📝 <b>উদাহরণ:</b> 01-05-2026 20-05-2026"
         )
         bot.register_next_step_handler(msg, process_custom_leave_report)
     except Exception as e:
