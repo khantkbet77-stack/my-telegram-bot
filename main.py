@@ -858,7 +858,7 @@ def handle_admin_join(call):
         if call.message.photo: bot.edit_message_caption(upd_txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
         else: bot.edit_message_text(upd_txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
 
-# ৫. চ্যাট শেষ (Done) এবং রেটিং বাটন (ফিডব্যাক আপডেটসহ)
+# ৫. চ্যাট শেষ (Done) ও রেটিং প্যানেল
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tk_done_"))
 def handle_admin_done(call):
     try:
@@ -880,7 +880,7 @@ def handle_admin_done(call):
         
         kb = types.InlineKeyboardMarkup(row_width=5)
         kb.add(*(types.InlineKeyboardButton(f"⭐️ {i}", callback_data=f"rt_{ticket_id}_{i}") for i in range(1, 6)))
-        bot.send_message(uid, "🎉 সমস্যা সমাধান হয়েছে! রেটিং পাঠান:", reply_markup=kb)
+        bot.send_message(uid, "✅ আপনার সমস্যাটি সমাধান হয়েছে। আমাদের সেবা সম্পর্কে আপনার মতামত জানাতে দয়া করে নিচে রেটিং দিন।", reply_markup=kb)
     except Exception as e: print("Admin Done Error:", e)
 
 # ৬. রেটিং এবং অ্যাডমিন গ্রুপে ফিডব্যাক আপডেট
@@ -893,7 +893,7 @@ def handle_rating(call):
     admin_msg_id = cur.fetchone()[0]
     conn.commit(); conn.close()
     
-    # অ্যাডমিন গ্রুপের মেসেজে রেটিং ফিডব্যাক যুক্ত করা
+    # অ্যাডমিন গ্রুপের মেসেজে ফিডব্যাক আপডেট
     try:
         msg = bot.get_message(ADMIN_GROUP_ID, admin_msg_id)
         current_text = msg.caption if msg.photo else msg.text
@@ -902,8 +902,9 @@ def handle_rating(call):
         else: bot.edit_message_text(updated_text, ADMIN_GROUP_ID, admin_msg_id, parse_mode="HTML")
     except: pass
     
+    # ইউজারকে বিদায় বার্তা
     thank_kb = types.InlineKeyboardMarkup(); thank_kb.add(types.InlineKeyboardButton("✅ Thank You!", callback_data="thx_done"))
-    bot.edit_message_text(f"💖 ধন্যবাদ! {stars} স্টার রেটিং পেয়েছেন।", call.message.chat.id, call.message.message_id, reply_markup=thank_kb)
+    bot.edit_message_text("ধন্যবাদ আপনার মূল্যবান রেটিংয়ের জন্য! 😊 আমাদের কাজ আপনার ভালো লেগেছে জেনে আমরা আনন্দিত। কোনো সমস্যা হলে আবারও জানাবেন। হ্যাভ আ নাইস ডে! ✨", call.message.chat.id, call.message.message_id, reply_markup=thank_kb)
 
 @bot.callback_query_handler(func=lambda c: c.data == "thx_done")
 def handle_thanks(call):
