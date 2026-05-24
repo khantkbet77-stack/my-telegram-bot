@@ -185,6 +185,17 @@ def start(message):
         msg = bot.send_message(message.chat.id, "🔒 <b>বটটি সিকিউর করা হয়েছে!</b>\n\nসিস্টেম ব্যবহার করতে দয়া করে টিমের <b>পাসওয়ার্ড (Secret Code)</b> টি লিখে সেন্ড করুন:")
         bot.register_next_step_handler(msg, check_password)
 
+# কোডের অন্য যেকোনো কমান্ডের নিচে এভাবে বসান
+@bot.message_handler(commands=['clear_all'])
+def clear_tickets(message):
+    # শুধুমাত্র আপনি (অ্যাডমিন) যাতে এটি ব্যবহার করতে পারেন সেজন্য আইডি চেক দেওয়া ভালো
+    if message.from_user.id !=aminal041: return 
+    
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE status = 'Working'")
+    conn.commit(); conn.close()
+    bot.reply_to(message, "✅ সব সচল টিকেট সলভ করা হয়েছে।")
+
 # 🔒 পাসওয়ার্ড চেক করার নতুন ফাংশন
 def check_password(message):
     if is_cmd(message): return
