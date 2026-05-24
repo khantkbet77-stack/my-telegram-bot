@@ -757,184 +757,106 @@ def process_half_confirm(call):
         bot.answer_callback_query(call.id, "❌ প্রসেস করতে সমস্যা হয়েছে! আবার চেষ্টা করুন।")
         
 # =======================================================
-# 🆘 লাইভ সাপোর্ট টিকেট সিস্টেম (পূর্ণাঙ্গ ও আপডেট সংস্করণ)
+# 🆘 লাইভ সাপোর্ট টিকেট সিস্টেম (ফাইনাল আপডেট ভার্সন)
 # =======================================================
 
-# ১. ইউজারদের জন্য প্রধান হেল্প মেনু
+# ১. হেল্প মেনু
 @bot.message_handler(func=lambda m: m.text == "🆘 হেল্প ও সাপোর্ট")
 def user_support_menu(message):
     kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("🔑 ১. OTP সমস্যা", callback_data="sup_OTP"),
-        types.InlineKeyboardButton("🔓 ২. লগইন সমস্যা", callback_data="sup_LOGIN"),
-        types.InlineKeyboardButton("📝 ৩. নিবন্ধন রিকুয়েষ্ট", callback_data="sup_REGISTER"),
-        types.InlineKeyboardButton("⚙️ ৪. অন্যান্য সমস্যা", callback_data="sup_OTHERS")
-    )
-    bot.send_message(message.chat.id, "👋 <b>লাইভ সাপোর্ট প্যানেলে স্বাগতম!</b>\nআপনার সমস্যার ধরন নির্বাচন করুন:", reply_markup=kb, parse_mode="HTML")
+    kb.add(types.InlineKeyboardButton("🔑 ১. OTP", callback_data="sup_OTP"), types.InlineKeyboardButton("🔓 ২. লগইন", callback_data="sup_LOGIN"),
+           types.InlineKeyboardButton("📝 ৩. নিবন্ধন", callback_data="sup_REGISTER"), types.InlineKeyboardButton("⚙️ ৪. অন্যান্য", callback_data="sup_OTHERS"))
+    bot.send_message(message.chat.id, "👋 <b>সাপোর্ট প্যানেল:</b> সমস্যা নির্বাচন করুন:", reply_markup=kb, parse_mode="HTML")
 
-# ২. বাটন ক্লিক হ্যান্ডলার
+# ২. টিকেট হ্যান্ডলার ও তথ্য সংগ্রহ
 @bot.callback_query_handler(func=lambda c: c.data.startswith("sup_"))
 def handle_support_category(call):
-    try:
-        bot.answer_callback_query(call.id)
-        category = call.data.split("_")[1]
-        user_name = get_user_name(call.message.chat.id)
-        data = {'cat': category, 'uid': call.from_user.id, 'name': user_name, 'details': {}}
-        
-        if category in ["OTP", "LOGIN", "REGISTER"]:
-            msg = bot.send_message(call.message.chat.id, f"📝 <b>[{category} সমস্যা]</b>\n👤 গ্রাহক: <b>{user_name}</b>\n\nদয়া করে গ্রাহকের <b>ইউজার নাম</b> লিখুন:")
-            bot.register_next_step_handler(msg, process_step_name, data)
-        elif category == "OTHERS":
-            msg = bot.send_message(call.message.chat.id, f"📝 <b>[অন্যান্য সমস্যা]</b>\n👤 গ্রাহক: <b>{user_name}</b>\n\nদয়া করে গ্রাহকের <b>ইউজার নাম বা ফোন নম্বর</b> লিখুন:")
-            bot.register_next_step_handler(msg, process_final_submit, data)
-    except Exception as e:
-        print("Support Category Error:", e)
+    bot.answer_callback_query(call.id)
+    cat = call.data.split("_")[1]
+    data = {'cat': cat, 'uid': call.from_user.id, 'name': get_user_name(call.message.chat.id), 'details': {}}
+    msg = bot.send_message(call.message.chat.id, f"📝 <b>[{cat}]</b> গ্রাহকের নাম ও বিস্তারিত লিখে পাঠান:")
+    bot.register_next_step_handler(msg, lambda m: process_final_submit(m, data))
 
-# নাম নেওয়ার ধাপ
-def process_step_name(message, data):
-    if is_cmd(message): return
-    data['details']['username'] = message.text
-    msg = bot.send_message(message.chat.id, "📱 এবার গ্রাহকের <b>ফোন নাম্বারটি</b> লিখুন:")
-    if data['cat'] == "REGISTER":
-        bot.register_next_step_handler(msg, process_step_gmail, data)
-    else:
-        bot.register_next_step_handler(msg, process_final_submit, data)
-
-# জিমেইল নেওয়ার ধাপ (শুধুমাত্র রেজিস্ট্রেশন)
-def process_step_gmail(message, data):
-    if is_cmd(message): return
-    data['details']['phone'] = message.text
-    msg = bot.send_message(message.chat.id, "📧 এবার গ্রাহকের <b>জিমেইল (Gmail)</b> আইডিটি লিখুন:")
-    bot.register_next_step_handler(msg, process_final_submit, data)
-
-# ৩. ফাইনাল সাবমিশন
 def process_final_submit(message, data):
-    if is_cmd(message): return
-    input_val = message.caption if message.photo else message.text
-    cat = data['cat']
-    
-    details = f"👤 <b>গ্রাহকের নাম:</b> {data['name']}\n"
-    if cat == "REGISTER":
-        details += f"🆔 <b>ইউজার নেম:</b> {data['details'].get('username', 'N/A')}\n📱 <b>ফোন:</b> {data['details'].get('phone', 'N/A')}\n📧 <b>জিমেইল:</b> {input_val}"
-    elif cat in ["OTP", "LOGIN"]:
-        details += f"🆔 <b>ইউজার নেম:</b> {data['details'].get('username', 'N/A')}\n📱 <b>ফোন:</b> {input_val}"
-    else:
-        details += f"✍️ <b>সমস্যার বিবরণ:</b> {input_val}"
-
+    details = message.caption or message.text
     try:
         conn = get_conn(); cur = conn.cursor()
-        cur.execute("INSERT INTO support_tickets (user_id, category, user_details, status) VALUES (%s, %s, %s, 'Pending') RETURNING id", (data['uid'], cat, details))
-        ticket_id = cur.fetchone()[0]
+        cur.execute("INSERT INTO support_tickets (user_id, category, user_details, status) VALUES (%s, %s, %s, 'Pending') RETURNING id", (data['uid'], data['cat'], details))
+        tid = cur.fetchone()[0]
         conn.commit(); conn.close()
         
-        adm_txt = f"📥 <b>টিম মেম্বার সাপোর্ট [#{ticket_id}]</b>\n━━━━━━━━━━━━━━━━━━\n{details}\n━━━━━━━━━━━━━━━━━━\n📌 <b>স্ট্যাটাস:</b> 🔴 Pending"
-        kb = types.InlineKeyboardMarkup(); kb.add(types.InlineKeyboardButton("🤝 Join Chat", callback_data=f"tk_join_{ticket_id}"))
+        adm_txt = f"📥 <b>নতুন টিকেট [#{tid}]</b>\n👤 <b>গ্রাহক:</b> {data['name']}\n✍️ <b>বিবরণ:</b> {details}\n📌 <b>স্ট্যাটাস:</b> 🔴 Pending"
+        kb = types.InlineKeyboardMarkup(); kb.add(types.InlineKeyboardButton("🤝 Join Chat", callback_data=f"tk_join_{tid}"))
         
-        if message.photo: sent_msg = bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=adm_txt, message_thread_id=SUPPORT_TOPIC_ID, reply_markup=kb, parse_mode="HTML")
-        else: sent_msg = bot.send_message(ADMIN_GROUP_ID, adm_txt, message_thread_id=SUPPORT_TOPIC_ID, reply_markup=kb, parse_mode="HTML")
+        sent = bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=adm_txt, message_thread_id=SUPPORT_TOPIC_ID, reply_markup=kb, parse_mode="HTML") if message.photo else bot.send_message(ADMIN_GROUP_ID, adm_txt, message_thread_id=SUPPORT_TOPIC_ID, reply_markup=kb, parse_mode="HTML")
         
         conn = get_conn(); cur = conn.cursor()
-        cur.execute("UPDATE support_tickets SET admin_msg_id = %s WHERE id = %s", (sent_msg.message_id, ticket_id))
+        cur.execute("UPDATE support_tickets SET admin_msg_id = %s WHERE id = %s", (sent.message_id, tid))
         conn.commit(); conn.close()
-        bot.send_message(message.chat.id, f"✅ আপনার {cat} রিকুয়েষ্টটি অ্যাডমিন প্যানেলে পাঠানো হয়েছে।")
+        bot.send_message(message.chat.id, f"✅ রিকুয়েষ্টটি অ্যাডমিন প্যানেলে পাঠানো হয়েছে (টিকেট #{tid})।")
     except Exception as e: print(e)
 
-# ৪. অ্যাডমিন জয়েন ও চ্যাট রাউটার
-@bot.callback_query_handler(func=lambda c: c.data.startswith("tk_join_"))
-def handle_admin_join(call):
-    ticket_id = int(call.data.split("_")[2])
+# ৩. অ্যাডমিন কন্ট্রোল (Join & Done)
+@bot.callback_query_handler(func=lambda c: c.data.startswith(("tk_join_", "tk_done_")))
+def handle_admin_action(call):
+    tid = int(call.data.split("_")[2])
+    action = call.data.split("_")[1]
     conn = get_conn(); cur = conn.cursor()
-    cur.execute("SELECT user_id, category, user_details FROM support_tickets WHERE id = %s", (ticket_id,))
-    ticket = cur.fetchone()
-    if ticket:
-        user_id, cat, details = ticket
-        cur.execute("UPDATE support_tickets SET admin_id = %s, status = 'Working' WHERE id = %s", (call.from_user.id, ticket_id))
-        conn.commit(); conn.close()
-        bot.answer_callback_query(call.id, "✅ চ্যাটে যুক্ত হয়েছেন!")
-        bot.send_message(user_id, f"👨‍💻 <b>অ্যাডমিন {call.from_user.first_name} আপনার [{cat}] রিকুয়েস্টে যুক্ত হয়েছেন!</b>\nআপনি এখন এখানে মেসেজ পাঠাতে পারেন।")
-        
-        upd_txt = f"📥 <b>সাপোর্ট টিকেট [#{ticket_id}]</b>\n{details}\n📌 <b>স্ট্যাটাস:</b> 🟡 Working\n👑 <b>দায়িত্বে:</b> {call.from_user.first_name}"
-        kb = types.InlineKeyboardMarkup(); kb.add(types.InlineKeyboardButton("✅ Problem Solved / Done", callback_data=f"tk_done_{ticket_id}"))
-        if call.message.photo: bot.edit_message_caption(upd_txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
-        else: bot.edit_message_text(upd_txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
-
-# ৫. চ্যাট শেষ (Done) ও রেটিং প্যানেল
-@bot.callback_query_handler(func=lambda c: c.data.startswith("tk_done_"))
-def handle_admin_done(call):
-    try:
-        ticket_id = int(call.data.split("_")[2])
-        conn = get_conn(); cur = conn.cursor()
-        cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE id = %s", (ticket_id,))
-        conn.commit(); conn.close()
-        
-        # অ্যাডমিন গ্রুপের মেসেজ আপডেট করা
-        new_text = (call.message.caption if call.message.photo else call.message.text).replace("🟡 Working", "🟢 Solved").replace("✅ Problem Solved / Done", "✅ Solved")
-        if call.message.photo: bot.edit_message_caption(new_text, call.message.chat.id, call.message.message_id, reply_markup=None, parse_mode="HTML")
-        else: bot.edit_message_text(new_text, call.message.chat.id, call.message.message_id, reply_markup=None, parse_mode="HTML")
-        
-        # ইউজারকে রেটিং প্যানেল পাঠানো
-        conn = get_conn(); cur = conn.cursor()
-        cur.execute("SELECT user_id FROM support_tickets WHERE id = %s", (ticket_id,))
-        uid = cur.fetchone()[0]
-        conn.close()
-        
+    if action == "join":
+        cur.execute("UPDATE support_tickets SET admin_id = %s, status = 'Working' WHERE id = %s", (call.from_user.id, tid))
+        bot.answer_callback_query(call.id, "✅ চ্যাটে যুক্ত হয়েছেন!"); bot.send_message(call.message.chat.id, f"👑 {call.from_user.first_name} যুক্ত হয়েছেন।", message_thread_id=SUPPORT_TOPIC_ID)
+    else:
+        cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE id = %s", (tid,))
         kb = types.InlineKeyboardMarkup(row_width=5)
-        kb.add(*(types.InlineKeyboardButton(f"⭐️ {i}", callback_data=f"rt_{ticket_id}_{i}") for i in range(1, 6)))
-        bot.send_message(uid, "✅ আপনার সমস্যাটি সমাধান হয়েছে। আমাদের সেবা সম্পর্কে আপনার মতামত জানাতে দয়া করে নিচে রেটিং দিন।", reply_markup=kb)
-    except Exception as e: print("Admin Done Error:", e)
+        kb.add(*(types.InlineKeyboardButton(f"⭐️ {i}", callback_data=f"rt_{tid}_{i}") for i in range(1, 6)))
+        cur.execute("SELECT user_id FROM support_tickets WHERE id = %s", (tid,))
+        bot.send_message(cur.fetchone()[0], "🎉 সমস্যা সমাধান হয়েছে! রেটিং দিন:", reply_markup=kb)
+    conn.commit(); conn.close()
 
-# ৬. রেটিং এবং অ্যাডমিন গ্রুপে ফিডব্যাক আপডেট
+# ৪. রেটিং ও ফিডব্যাক আপডেট
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rt_"))
 def handle_rating(call):
-    ticket_id, stars = call.data.split("_")[1], call.data.split("_")[2]
+    tid, stars = call.data.split("_")[1], call.data.split("_")[2]
     conn = get_conn(); cur = conn.cursor()
-    cur.execute("UPDATE support_tickets SET rating = %s WHERE id = %s", (stars, ticket_id))
-    cur.execute("SELECT admin_msg_id FROM support_tickets WHERE id = %s", (ticket_id,))
-    admin_msg_id = cur.fetchone()[0]
+    cur.execute("UPDATE support_tickets SET rating = %s WHERE id = %s", (stars, tid))
+    cur.execute("SELECT admin_msg_id FROM support_tickets WHERE id = %s", (tid,))
+    mid = cur.fetchone()[0]
     conn.commit(); conn.close()
     
-    # অ্যাডমিন গ্রুপের মেসেজে ফিডব্যাক আপডেট
     try:
-        msg = bot.get_message(ADMIN_GROUP_ID, admin_msg_id)
-        current_text = msg.caption if msg.photo else msg.text
-        updated_text = current_text + f"\n\n📊 <b>Customer Feedback:</b> {'⭐' * int(stars)} ({stars}/5)"
-        if msg.photo: bot.edit_message_caption(updated_text, ADMIN_GROUP_ID, admin_msg_id, parse_mode="HTML")
-        else: bot.edit_message_text(updated_text, ADMIN_GROUP_ID, admin_msg_id, parse_mode="HTML")
+        msg = bot.get_message(ADMIN_GROUP_ID, mid)
+        new_txt = (msg.caption or msg.text) + f"\n\n📊 <b>Feedback:</b> {'⭐'*int(stars)}"
+        if msg.photo: bot.edit_message_caption(new_txt, ADMIN_GROUP_ID, mid, parse_mode="HTML")
+        else: bot.edit_message_text(new_txt, ADMIN_GROUP_ID, mid, parse_mode="HTML")
     except: pass
+    bot.edit_message_text("ধন্যবাদ! কোনো সমস্যা হলে আবার জানাবেন। হ্যাভ আ নাইস ডে! ✨", call.message.chat.id, call.message.message_id)
+
+# ৫. লাইভ চ্যাট রাউটার (#টিকেট নম্বর দিয়ে রিপ্লাই)
+@bot.message_handler(func=lambda m: m.chat.id == ADMIN_GROUP_ID or m.chat.type == 'private', content_types=['text', 'photo'])
+def handle_chat_bridge(message):
+    txt = message.caption or message.text
+    if not txt or is_cmd(message): return
     
-    # ইউজারকে বিদায় বার্তা
-    thank_kb = types.InlineKeyboardMarkup(); thank_kb.add(types.InlineKeyboardButton("✅ Thank You!", callback_data="thx_done"))
-    bot.edit_message_text("ধন্যবাদ আপনার মূল্যবান রেটিংয়ের জন্য! 😊 আমাদের কাজ আপনার ভালো লেগেছে জেনে আমরা আনন্দিত। কোনো সমস্যা হলে আবারও জানাবেন। হ্যাভ আ নাইস ডে! ✨", call.message.chat.id, call.message.message_id, reply_markup=thank_kb)
-
-@bot.callback_query_handler(func=lambda c: c.data == "thx_done")
-def handle_thanks(call):
-    bot.answer_callback_query(call.id, "আপনাকেও ধন্যবাদ! 😊")
-    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
-
-# ৭. লাইভ চ্যাট ব্রিজ (রাউটার)
-@bot.message_handler(chat_types=['private'], content_types=['text', 'photo'])
-def handle_live_chat(message):
-    if is_cmd(message) or message.text in ["👑 Admin Panel", "🆘 হেল্প ও সাপোর্ট"]: return
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("SELECT id FROM support_tickets WHERE user_id = %s AND status = 'Working'", (message.from_user.id,))
-    ticket = cur.fetchone()
-    if ticket:
-        intro = f"💬 <b>[টিকেট #{ticket[0]}] ইউজার:</b>\n"
-        if message.photo: bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=intro+(message.caption or ""), message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
-        else: bot.send_message(ADMIN_GROUP_ID, intro + message.text, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
-    conn.close()
-
-@bot.message_handler(func=lambda m: m.chat.id == ADMIN_GROUP_ID, content_types=['text', 'photo'])
-def handle_admin_replies(message):
-    if not message.reply_to_message or "টিকেট #" not in (message.reply_to_message.caption or message.reply_to_message.text or ""): return
-    ticket_id = int((message.reply_to_message.caption or message.reply_to_message.text).split("টিকেট #")[1].split("]")[0].split()[0].replace("#",""))
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("SELECT user_id FROM support_tickets WHERE id = %s AND status = 'Working'", (ticket_id,))
-    user = cur.fetchone()
-    if user:
-        if message.photo: bot.send_photo(user[0], message.photo[-1].file_id, caption=message.caption)
-        else: bot.send_message(user[0], message.text)
-    conn.close()
+    # অ্যাডমিন রিপ্লাই দিচ্ছে কি না চেক (যেমন: #101 মেসেজ...)
+    if message.chat.id == ADMIN_GROUP_ID and "#" in txt:
+        tid = int(txt.split("#")[1].split()[0])
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT user_id FROM support_tickets WHERE id = %s", (tid,))
+        uid = cur.fetchone()
+        if uid:
+            if message.photo: bot.send_photo(uid[0], message.photo[-1].file_id, caption=txt.split(str(tid))[1])
+            else: bot.send_message(uid[0], f"👨‍💻 <b>অ্যাডমিন রিপ্লাই:</b>\n{txt.split(str(tid))[1]}", parse_mode="HTML")
+        conn.close()
+    # ইউজার মেসেজ দিচ্ছে কি না চেক
+    elif message.chat.type == 'private':
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT id FROM support_tickets WHERE user_id = %s AND status = 'Working'", (message.from_user.id,))
+        tid = cur.fetchone()
+        if tid:
+            intro = f"💬 <b>[#{tid[0]}] ইউজার:</b>\n"
+            if message.photo: bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=intro+txt, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
+            else: bot.send_message(ADMIN_GROUP_ID, intro + txt, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
+        conn.close()
         
 # =======================================================
 # 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (১০০% জ্যাম-ফ্রি চূড়ান্ত সংস্করণ)
