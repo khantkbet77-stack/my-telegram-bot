@@ -858,29 +858,59 @@ def handle_admin_join(call):
         if call.message.photo: bot.edit_message_caption(upd_txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
         else: bot.edit_message_text(upd_txt, call.message.chat.id, call.message.message_id, reply_markup=kb, parse_mode="HTML")
 
-# ৫. চ্যাট শেষ (Done) ও রেটিং
+# ৫. চ্যাট শেষ (Done) এবং রেটিং বাটন (ফিডব্যাক আপডেটসহ)
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tk_done_"))
 def handle_admin_done(call):
-    ticket_id = int(call.data.split("_")[2])
-    conn = get_conn(); cur = conn.cursor()
-    cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE id = %s", (ticket_id,))
-    conn.commit(); conn.close()
-    
-    new_text = (call.message.caption if call.message.photo else call.message.text).replace("🟡 Working", "🟢 Solved").replace("Problem Solved / Done", "")
-    if call.message.photo: bot.edit_message_caption(new_text, call.message.chat.id, call.message.message_id, reply_markup=None, parse_mode="HTML")
-    else: bot.edit_message_text(new_text, call.message.chat.id, call.message.message_id, reply_markup=None, parse_mode="HTML")
-    
-    kb = types.InlineKeyboardMarkup(row_width=5)
-    kb.add(*(types.InlineKeyboardButton(f"⭐️ {i}", callback_data=f"rt_{ticket_id}_{i}") for i in range(1, 6)))
-    bot.send_message(call.message.chat.id, "🎉 সমস্যা সমাধান হয়েছে! রেটিং পাঠান:", reply_markup=kb)
+    try:
+        ticket_id = int(call.data.split("_")[2])
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE id = %s", (ticket_id,))
+        conn.commit(); conn.close()
+        
+        # অ্যাডমিন গ্রুপের মেসেজ আপডেট করা
+        new_text = (call.message.caption if call.message.photo else call.message.text).replace("🟡 Working", "🟢 Solved").replace("✅ Problem Solved / Done", "✅ Solved")
+        if call.message.photo: bot.edit_message_caption(new_text, call.message.chat.id, call.message.message_id, reply_markup=None, parse_mode="HTML")
+        else: bot.edit_message_text(new_text, call.message.chat.id, call.message.message_id, reply_markup=None, parse_mode="HTML")
+        
+        # ইউজারকে রেটিং প্যানেল পাঠানো
+        conn = get_conn(); cur = conn.cursor()
+        cur.execute("SELECT user_id FROM support_tickets WHERE id = %s", (ticket_id,))
+        uid = cur.fetchone()[0]
+        conn.close()
+        
+        kb = types.InlineKeyboardMarkup(row_width=5)
+        kb.add(*(types.InlineKeyboardButton(f"⭐️ {i}", callback_data=f"rt_{ticket_id}_{i}") for i in range(1, 6)))
+        bot.send_message(uid, "🎉 সমস্যা সমাধান হয়েছে! রেটিং পাঠান:", reply_markup=kb)
+    except Exception as e: print("Admin Done Error:", e)
 
+# ৬. রেটিং এবং অ্যাডমিন গ্রুপে ফিডব্যাক আপডেট
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rt_"))
 def handle_rating(call):
     ticket_id, stars = call.data.split("_")[1], call.data.split("_")[2]
-    thank_kb = types.InlineKeyboardMarkup(); thank_kb.add(types.InlineKeyboardButton("✅ Thank You!", callback_data="thx"))
-    bot.edit_message_text(f"💖 ধন্যবাদ! {stars} স্টার রেটিং পেয়েছেন।", call.message.chat.id, call.message.message_id, reply_markup=thank_kb, parse_mode="HTML")
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute("UPDATE support_tickets SET rating = %s WHERE id = %s", (stars, ticket_id))
+    cur.execute("SELECT admin_msg_id FROM support_tickets WHERE id = %s", (ticket_id,))
+    admin_msg_id = cur.fetchone()[0]
+    conn.commit(); conn.close()
+    
+    # অ্যাডমিন গ্রুপের মেসেজে রেটিং ফিডব্যাক যুক্ত করা
+    try:
+        msg = bot.get_message(ADMIN_GROUP_ID, admin_msg_id)
+        current_text = msg.caption if msg.photo else msg.text
+        updated_text = current_text + f"\n\n📊 <b>Customer Feedback:</b> {'⭐' * int(stars)} ({stars}/5)"
+        if msg.photo: bot.edit_message_caption(updated_text, ADMIN_GROUP_ID, admin_msg_id, parse_mode="HTML")
+        else: bot.edit_message_text(updated_text, ADMIN_GROUP_ID, admin_msg_id, parse_mode="HTML")
+    except: pass
+    
+    thank_kb = types.InlineKeyboardMarkup(); thank_kb.add(types.InlineKeyboardButton("✅ Thank You!", callback_data="thx_done"))
+    bot.edit_message_text(f"💖 ধন্যবাদ! {stars} স্টার রেটিং পেয়েছেন।", call.message.chat.id, call.message.message_id, reply_markup=thank_kb)
 
-# ৬. লাইভ চ্যাট ব্রিজ (রাউটার)
+@bot.callback_query_handler(func=lambda c: c.data == "thx_done")
+def handle_thanks(call):
+    bot.answer_callback_query(call.id, "আপনাকেও ধন্যবাদ! 😊")
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+
+# ৭. লাইভ চ্যাট ব্রিজ (রাউটার)
 @bot.message_handler(chat_types=['private'], content_types=['text', 'photo'])
 def handle_live_chat(message):
     if is_cmd(message) or message.text in ["👑 Admin Panel", "🆘 হেল্প ও সাপোর্ট"]: return
