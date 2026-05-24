@@ -185,11 +185,15 @@ def start(message):
         msg = bot.send_message(message.chat.id, "🔒 <b>বটটি সিকিউর করা হয়েছে!</b>\n\nসিস্টেম ব্যবহার করতে দয়া করে টিমের <b>পাসওয়ার্ড (Secret Code)</b> টি লিখে সেন্ড করুন:")
         bot.register_next_step_handler(msg, check_password)
 
-# কোডের অন্য যেকোনো কমান্ডের নিচে এভাবে বসান
 @bot.message_handler(commands=['clear_all'])
 def clear_tickets(message):
-    # শুধুমাত্র আপনি (অ্যাডমিন) যাতে এটি ব্যবহার করতে পারেন সেজন্য আইডি চেক দেওয়া ভালো
-    if message.from_user.id !=aminal041: return 
+    # আপনার টেলিগ্রামের প্রকৃত আইডি এখানে সংখ্যায় বসান (যেমন: 123456789)
+    # আপনি যদি আইডি না জেনে থাকেন, তবে আপাতত এই লাইনটি মুছে দিতে পারেন
+    MY_ID = 12345678910 # এখানে আপনার সঠিক আইডিটি দিন
+    
+    if message.from_user.id != MY_ID:12345678910 
+        bot.reply_to(message, "❌ আপনি এই কমান্ডটি চালানোর অনুমতিপ্রাপ্ত নন।")
+        return 
     
     conn = get_conn(); cur = conn.cursor()
     cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE status = 'Working'")
