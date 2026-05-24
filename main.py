@@ -891,16 +891,16 @@ def handle_thanks(call):
     bot.answer_callback_query(call.id, "আপনাকেও ধন্যবাদ! 😊")
     bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
-# ৭. লাইভ চ্যাট ব্রিজ (সংশোধিত ও নিয়ন্ত্রিত)
+# ৭. লাইভ চ্যাট ব্রিজ (ক্লিন ও ফিক্সড ভার্সন)
 @bot.message_handler(chat_types=['private'], content_types=['text', 'photo'])
 def handle_user_bridge(message):
+    # মেনু বা কমান্ড হলে কাজ করবে না
     if is_cmd(message) or message.text in ["👑 Admin Panel", "🆘 হেল্প ও সাপোর্ট"]: return
     
-    # শুধু তখনই ফরোয়ার্ড করবে যদি ইউজারের একটি 'Working' টিকেট থাকে
+    # ইউজার মেসেজ পাঠালে তা গ্রুপে পাঠাবে যদি স্ট্যাটাস Working থাকে
     conn = get_conn(); cur = conn.cursor()
     cur.execute("SELECT id FROM support_tickets WHERE user_id = %s AND status = 'Working'", (message.from_user.id,))
     t = cur.fetchone()
-    
     if t:
         intro = f"💬 <b>[#{t[0]}] ইউজার:</b>\n"
         if message.photo: 
@@ -909,15 +909,15 @@ def handle_user_bridge(message):
             bot.send_message(ADMIN_GROUP_ID, intro + message.text, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
     conn.close()
 
-# অ্যাডমিন টু ইউজার রিপ্লাই (শুধুমাত্র রিপ্লাই বাটনের জন্য)
+# অ্যাডমিন রিপ্লাই হ্যান্ডলার (শুধু টিকেটের মেসেজে রিপ্লাই করলে কাজ করবে)
 @bot.message_handler(func=lambda m: m.chat.id == ADMIN_GROUP_ID and m.reply_to_message, content_types=['text', 'photo'])
 def handle_admin_reply(message):
-    # টিকেট আইডি বের করা (মেসেজটি যদি টিকেট ফরম্যাটে থাকে)
-    reply_msg = message.reply_to_message.caption or message.reply_to_message.text
-    if reply_msg and "[" in reply_msg and "#" in reply_msg:
+    # রিপ্লাই দেওয়া মেসেজটির টেক্সট বা ক্যাপশন চেক করা
+    original_msg = message.reply_to_message.caption or message.reply_to_message.text
+    if original_msg and "[#" in original_msg:
         try:
-            # "[#123]" ফরম্যাট থেকে আইডি বের করা
-            tid = int(reply_msg.split("#")[1].split("]")[0])
+            # [#123] এই ফরম্যাট থেকে আইডি বের করা
+            tid = int(original_msg.split("[#")[1].split("]")[0])
             
             conn = get_conn(); cur = conn.cursor()
             cur.execute("SELECT user_id FROM support_tickets WHERE id = %s AND status = 'Working'", (tid,))
