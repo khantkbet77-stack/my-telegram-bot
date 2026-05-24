@@ -830,6 +830,10 @@ def process_final_submit(message, data):
     conn.commit(); conn.close()
     bot.send_message(message.chat.id, f"✅ আপনার রিকুয়েষ্টটি অ্যাডমিন প্যানেলে পাঠানো হয়েছে।")
 
+# =======================================================
+# সাপোর্ট সিস্টেমের জয়েন, চ্যাট ব্রিজ, সলভ ও রেটিং (আপডেট)
+# =======================================================
+
 # ৪. অ্যাডমিন জয়েন ও চ্যাট ব্রিজ
 @bot.callback_query_handler(func=lambda c: c.data.startswith("tk_join_"))
 def handle_admin_join(call):
@@ -843,7 +847,7 @@ def handle_admin_join(call):
         bot.answer_callback_query(call.id, "✅ চ্যাটে যুক্ত হয়েছেন!")
         bot.send_message(t[0], f"👨‍💻 <b>অ্যাডমিন {call.from_user.first_name} আপনার [{t[1]}] সাপোর্টে যুক্ত হয়েছেন!</b>", parse_mode="HTML")
         upd = f"📥 <b>সাপোর্ট টিকেট [#{tid}]</b>\n{t[2]}\n📌 <b>স্ট্যাটাস:</b> 🟡 Working\n👑 <b>দায়িত্বে:</b> {call.from_user.first_name}"
-        kb = types.InlineKeyboardMarkup(); kb.add(types.InlineKeyboardButton("✅ Solved", callback_data=f"tk_done_{tid}"))
+        kb = types.InlineKeyboardMarkup(); kb.add(types.InlineKeyboardButton("✅ Problem Solved / Done", callback_data=f"tk_done_{tid}"))
         if call.message.photo: bot.edit_message_caption(upd, ADMIN_GROUP_ID, call.message.message_id, reply_markup=kb, parse_mode="HTML")
         else: bot.edit_message_text(upd, ADMIN_GROUP_ID, call.message.message_id, reply_markup=kb, parse_mode="HTML")
 
@@ -854,7 +858,7 @@ def handle_admin_done(call):
     conn = get_conn(); cur = conn.cursor()
     cur.execute("UPDATE support_tickets SET status = 'Solved' WHERE id = %s", (tid,))
     conn.commit(); conn.close()
-    new_text = (call.message.caption or call.message.text).replace("🟡 Working", "🟢 Solved").replace("✅ Solved", "✅ Solved")
+    new_text = (call.message.caption or call.message.text).replace("🟡 Working", "🟢 Solved")
     if call.message.photo: bot.edit_message_caption(new_text, ADMIN_GROUP_ID, call.message.message_id, reply_markup=None, parse_mode="HTML")
     else: bot.edit_message_text(new_text, ADMIN_GROUP_ID, call.message.message_id, reply_markup=None, parse_mode="HTML")
     
@@ -865,7 +869,7 @@ def handle_admin_done(call):
     kb.add(*(types.InlineKeyboardButton(f"⭐️ {i}", callback_data=f"rt_{tid}_{i}") for i in range(1, 6)))
     bot.send_message(uid, "✅ আপনার সমস্যাটি সমাধান হয়েছে। সেবা সম্পর্কে মতামত জানাতে রেটিং দিন:", reply_markup=kb)
 
-# ৬. রেটিং ও ফিডব্যাক আপডেট
+# ৬. রেটিং ও ফিডব্যাক আপডেট (সাথে থ্যাঙ্ক ইউ হ্যান্ডলার)
 @bot.callback_query_handler(func=lambda c: c.data.startswith("rt_"))
 def handle_rating(call):
     tid, stars = call.data.split("_")[1], call.data.split("_")[2]
@@ -882,10 +886,16 @@ def handle_rating(call):
     thank_kb = types.InlineKeyboardMarkup(); thank_kb.add(types.InlineKeyboardButton("✅ Thank You!", callback_data="thx"))
     bot.edit_message_text("ধন্যবাদ আপনার মূল্যবান রেটিংয়ের জন্য! 😊 কোনো সমস্যা হলে আবারও জানাবেন। হ্যাভ আ নাইস ডে! ✨", call.message.chat.id, call.message.message_id, reply_markup=thank_kb)
 
+@bot.callback_query_handler(func=lambda c: c.data == "thx")
+def handle_thanks(call):
+    bot.answer_callback_query(call.id, "আপনাকেও ধন্যবাদ! 😊")
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+
 # ৭. লাইভ চ্যাট ব্রিজ ও টিকেট মেনশন রিপ্লাই
 @bot.message_handler(func=lambda m: True, content_types=['text', 'photo'])
 def handle_bridge(message):
     if is_cmd(message) or message.text in ["👑 Admin Panel", "🆘 হেল্প ও সাপোর্ট"]: return
+    
     # ইউজার টু অ্যাডমিন
     if message.chat.type == 'private':
         conn = get_conn(); cur = conn.cursor()
@@ -896,18 +906,21 @@ def handle_bridge(message):
             if message.photo: bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=intro+(message.caption or ""), message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
             else: bot.send_message(ADMIN_GROUP_ID, intro + message.text, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
         conn.close()
-    # অ্যাডমিন টু ইউজার (#টিকেট নম্বর দিয়ে রিপ্লাই)
+        
+    # অ্যাডমিন টু ইউজার (#টিকেট নম্বর দিয়ে রিপ্লাই)
     elif message.chat.id == ADMIN_GROUP_ID and "#" in (message.caption or message.text or ""):
         txt = message.caption or message.text
-        tid = int(txt.split("#")[1].split()[0])
-        conn = get_conn(); cur = conn.cursor()
-        cur.execute("SELECT user_id FROM support_tickets WHERE id = %s AND status = 'Working'", (tid,))
-        u = cur.fetchone()
-        if u:
-            r = txt.replace(f"#{tid}", "").strip()
-            if message.photo: bot.send_photo(u[0], message.photo[-1].file_id, caption=f"👨‍💻 <b>অ্যাডমিন:</b> {r}", parse_mode="HTML")
-            else: bot.send_message(u[0], f"👨‍💻 <b>অ্যাডমিন:</b> {r}", parse_mode="HTML")
-        conn.close()
+        try:
+            tid = int(txt.split("#")[1].split()[0])
+            conn = get_conn(); cur = conn.cursor()
+            cur.execute("SELECT user_id FROM support_tickets WHERE id = %s AND status = 'Working'", (tid,))
+            u = cur.fetchone()
+            if u:
+                r = txt.replace(f"#{tid}", "").strip()
+                if message.photo: bot.send_photo(u[0], message.photo[-1].file_id, caption=f"👨‍💻 <b>অ্যাডমিন:</b> {r}", parse_mode="HTML")
+                else: bot.send_message(u[0], f"👨‍💻 <b>অ্যাডমিন:</b> {r}", parse_mode="HTML")
+            conn.close()
+        except: pass
         
 # =======================================================
 # 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (১০০% জ্যাম-ফ্রি চূড়ান্ত সংস্করণ)
