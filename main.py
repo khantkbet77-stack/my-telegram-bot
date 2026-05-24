@@ -906,7 +906,7 @@ def handle_thanks(call):
     bot.answer_callback_query(call.id, "আপনাকেও ধন্যবাদ! 😊")
     bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
-# ৭. লাইভ চ্যাট ব্রিজ (সংশোধিত ও নিয়ন্ত্রিত ভার্সন)
+# ৭. লাইভ চ্যাট ব্রিজ (ক্লিন ও ফিক্সড ভার্সন)
 @bot.message_handler(chat_types=['private'], content_types=['text', 'photo'])
 def handle_user_bridge(message):
     # মেনু বা কমান্ড হলে কোনো কিছু ফরোয়ার্ড হবে না
@@ -918,31 +918,38 @@ def handle_user_bridge(message):
     t = cur.fetchone()
     
     if t:
-        # মেসেজটি কেবল তখনই গ্রুপে যাবে যদি টিকেট Working স্ট্যাটাসে থাকে
         intro = f"💬 <b>[#{t[0]}] ইউজার:</b>\n"
         if message.photo: 
             bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=intro+(message.caption or ""), message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
         else: 
             bot.send_message(ADMIN_GROUP_ID, intro + message.text, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
-    # যদি কোনো Working টিকেট না থাকে, তবে বট কিছুই করবে না (এটিই আমরা চাই)
     conn.close()
 
-# অ্যাডমিন টু ইউজার রিপ্লাই
+# অ্যাডমিন রিপ্লাই হ্যান্ডলার (শুধু টিকেটের মেসেজে রিপ্লাই করলে কাজ করবে)
 @bot.message_handler(func=lambda m: m.chat.id == ADMIN_GROUP_ID and m.reply_to_message, content_types=['text', 'photo'])
 def handle_admin_reply(message):
-    # রিপ্লাই দেওয়া মেসেজটির টিকেট আইডি বের করা
-    reply_msg = message.reply_to_message.caption or message.reply_to_message.text
-    if reply_msg and "[#" in reply_msg:
+    # রিপ্লাই দেওয়া মেসেজটির ক্যাপশন বা টেক্সট চেক করা
+    original_msg = message.reply_to_message.caption or message.reply_to_message.text
+    
+    # নিশ্চিত করা যে মেসেজটি একটি টিকেট মেসেজ
+    if original_msg and "[#" in original_msg:
         try:
-            tid = int(reply_msg.split("[#")[1].split("]")[0])
+            # আইডি বের করার সহজ লজিক
+            tid = int(original_msg.split("[#")[1].split("]")[0])
+            
             conn = get_conn(); cur = conn.cursor()
             cur.execute("SELECT user_id FROM support_tickets WHERE id = %s AND status = 'Working'", (tid,))
             u = cur.fetchone()
+            
             if u:
-                if message.photo: bot.send_photo(u[0], message.photo[-1].file_id, caption=f"👨‍💻 <b>অ্যাডমিন:</b> {message.caption or ''}", parse_mode="HTML")
-                else: bot.send_message(u[0], f"👨‍💻 <b>অ্যাডমিন:</b> {message.text}", parse_mode="HTML")
+                admin_text = f"👨‍💻 <b>অ্যাডমিন:</b> {message.text or message.caption or ''}"
+                if message.photo: 
+                    bot.send_photo(u[0], message.photo[-1].file_id, caption=admin_text, parse_mode="HTML")
+                else: 
+                    bot.send_message(u[0], admin_text, parse_mode="HTML")
             conn.close()
-        except Exception as e: print("Admin Reply Error:", e)
+        except Exception as e: 
+            print("Admin Reply Error:", e)
         
 # =======================================================
 # 👑 অ্যাডমিন প্যানেল ও রিচার্জ/ছুটি রিপোর্ট (১০০% জ্যাম-ফ্রি চূড়ান্ত সংস্করণ)
