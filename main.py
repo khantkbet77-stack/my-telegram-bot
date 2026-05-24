@@ -149,7 +149,7 @@ def main_menu(user):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add("📊 Hourly Report", "💳 ডিপোজিট/উত্তোলন")
     markup.add("⏱️ Daily Attendance", "📱 Recharges")
-    markup.add("🩺 SL-OFF-issue", "🆘 হেল্প ও সাপোর্ট")
+    markup.add("🩺 SL-OFF-issue") # এখান থেকে "🆘 হেল্প ও সাপোর্ট" মুছে ফেলা হয়েছে
     
     # শুধু অ্যাডমিনদের প্যানেল বাটন দেখাবে
     if is_admin_obj(user):
