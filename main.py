@@ -891,34 +891,38 @@ def handle_thanks(call):
     bot.answer_callback_query(call.id, "আপনাকেও ধন্যবাদ! 😊")
     bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
-# ৭. লাইভ চ্যাট ব্রিজ ও টিকেট মেনশন রিপ্লাই
-@bot.message_handler(func=lambda m: True, content_types=['text', 'photo'])
-def handle_bridge(message):
+# ৭. লাইভ চ্যাট ব্রিজ (এখন এটি অনেক বেশি নিয়ন্ত্রিত)
+@bot.message_handler(chat_types=['private'], content_types=['text', 'photo'])
+def handle_user_bridge(message):
     if is_cmd(message) or message.text in ["👑 Admin Panel", "🆘 হেল্প ও সাপোর্ট"]: return
     
-    # ইউজার টু অ্যাডমিন
-    if message.chat.type == 'private':
-        conn = get_conn(); cur = conn.cursor()
-        cur.execute("SELECT id FROM support_tickets WHERE user_id = %s AND status = 'Working'", (message.from_user.id,))
-        t = cur.fetchone()
-        if t:
-            intro = f"💬 <b>[#{t[0]}] ইউজার:</b>\n"
-            if message.photo: bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=intro+(message.caption or ""), message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
-            else: bot.send_message(ADMIN_GROUP_ID, intro + message.text, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
-        conn.close()
-        
-    # অ্যাডমিন টু ইউজার (#টিকেট নম্বর দিয়ে রিপ্লাই)
-    elif message.chat.id == ADMIN_GROUP_ID and "#" in (message.caption or message.text or ""):
-        txt = message.caption or message.text
+    # শুধু তখনই ফরোয়ার্ড করবে যদি ইউজারের একটি 'Working' টিকেট থাকে
+    conn = get_conn(); cur = conn.cursor()
+    cur.execute("SELECT id FROM support_tickets WHERE user_id = %s AND status = 'Working'", (message.from_user.id,))
+    t = cur.fetchone()
+    
+    if t:
+        intro = f"💬 <b>[#{t[0]}] ইউজার:</b>\n"
+        if message.photo: 
+            bot.send_photo(ADMIN_GROUP_ID, message.photo[-1].file_id, caption=intro+(message.caption or ""), message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
+        else: 
+            bot.send_message(ADMIN_GROUP_ID, intro + message.text, message_thread_id=SUPPORT_TOPIC_ID, parse_mode="HTML")
+    conn.close()
+
+# অ্যাডমিন টু ইউজার রিপ্লাই (এটি আলাদা রাখা হয়েছে যেন কনফ্লিক্ট না করে)
+@bot.message_handler(func=lambda m: m.chat.id == ADMIN_GROUP_ID and m.reply_to_message, content_types=['text', 'photo'])
+def handle_admin_reply(message):
+    # শুধু রিপ্লাই বাটনে ক্লিক করলেই কাজ করবে
+    reply_txt = message.reply_to_message.caption or message.reply_to_message.text
+    if "#" in reply_txt:
         try:
-            tid = int(txt.split("#")[1].split()[0])
+            tid = int(reply_txt.split("#")[1].split()[0])
             conn = get_conn(); cur = conn.cursor()
             cur.execute("SELECT user_id FROM support_tickets WHERE id = %s AND status = 'Working'", (tid,))
             u = cur.fetchone()
             if u:
-                r = txt.replace(f"#{tid}", "").strip()
-                if message.photo: bot.send_photo(u[0], message.photo[-1].file_id, caption=f"👨‍💻 <b>অ্যাডমিন:</b> {r}", parse_mode="HTML")
-                else: bot.send_message(u[0], f"👨‍💻 <b>অ্যাডমিন:</b> {r}", parse_mode="HTML")
+                if message.photo: bot.send_photo(u[0], message.photo[-1].file_id, caption=f"👨‍💻 <b>অ্যাডমিন:</b> {message.caption or ''}", parse_mode="HTML")
+                else: bot.send_message(u[0], f"👨‍💻 <b>অ্যাডমিন:</b> {message.text}", parse_mode="HTML")
             conn.close()
         except: pass
         
