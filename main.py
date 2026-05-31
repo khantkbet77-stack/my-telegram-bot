@@ -29,7 +29,7 @@ TOPIC_HOURLY = 88
 TOPIC_LEAVE = 405       
 
 # ক্লাউড ডাটাবেস ইউআরএল (Neon DB)
-DB_URL = "postgresql://postgres:Alamin%4004177@db.tsgzoaaoneorytgbjisz.supabase.co:5432/postgres"
+DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:5432/postgres"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
