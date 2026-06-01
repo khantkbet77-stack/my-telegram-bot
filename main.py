@@ -28,9 +28,7 @@ TOPIC_RECHARGE = 13
 TOPIC_HOURLY = 88       
 TOPIC_LEAVE = 405       
 
-# ডোমেইন নেমের বদলে আইপি বা সরাসরি কানেকশন ফোর্স করা
-DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=no-verify"
-
+DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=disable"
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 # =======================================================
