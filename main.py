@@ -29,7 +29,6 @@ TOPIC_HOURLY = 88
 TOPIC_LEAVE = 405       
 
 DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=disable"
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
 # =======================================================
 # 🛡️ প্রয়োজনীয় ফাংশন সমূহ (Helper Functions)
