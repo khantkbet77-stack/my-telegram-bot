@@ -28,8 +28,8 @@ TOPIC_RECHARGE = 13
 TOPIC_HOURLY = 88       
 TOPIC_LEAVE = 405       
 
-# পোর্ট ৫৪৩২ এর জায়গায় ৬৫৪৩ ব্যবহার করুন
-DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=require"
+# ডোমেইন নেমের বদলে আইপি বা সরাসরি কানেকশন ফোর্স করা
+DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=no-verify"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
