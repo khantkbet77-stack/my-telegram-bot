@@ -28,8 +28,8 @@ TOPIC_RECHARGE = 13
 TOPIC_HOURLY = 88       
 TOPIC_LEAVE = 405       
 
-# ক্লাউড ডাটাবেস ইউআরএল (Neon DB)
-DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:5432/postgres"
+# পোর্ট ৫৪৩২ এর জায়গায় ৬৫৪৩ ব্যবহার করুন
+DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=require"
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
