@@ -28,7 +28,8 @@ TOPIC_RECHARGE = 13
 TOPIC_HOURLY = 88       
 TOPIC_LEAVE = 405       
 
-DB_URL = "postgresql://postgres:Tkbet77Alamin@db.jbyoziiykcymahmeyxsm.supabase.co:6543/postgres?sslmode=disable"
+# এভাবে ট্রাই করুন (ডোমেইনের জায়গায় আইপি বসাবেন)
+DB_URL = "postgresql://postgres:Tkbet77Alamin@35.x.x.x:6543/postgres?sslmode=disable"
 
 # =======================================================
 # 🛡️ প্রয়োজনীয় ফাংশন সমূহ (Helper Functions)
