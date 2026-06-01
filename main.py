@@ -183,20 +183,27 @@ def register(message):
         return
         
     clean_name = clean_text(message.text)
+    user_id = message.chat.id
     username = message.from_user.username.lower() if message.from_user.username else ""
     
     try:
         conn = get_conn()
         cursor = conn.cursor()
         
-        cursor.execute("INSERT INTO users (user_id, name, username) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET name = EXCLUDED.name, username = EXCLUDED.username", (message.chat.id, clean_name, username))
+        # এখানে কোনো ভুল আছে কি না তা চেক করতে print ব্যবহার করছি
+        sql = "INSERT INTO users (user_id, name, username) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET name = %s, username = %s"
+        cursor.execute(sql, (user_id, clean_name, username, clean_name, username))
         
         conn.commit()
+        cursor.close() # cursor close করা জরুরি
         conn.close()
         
-        bot.send_message(message.chat.id, f"🎊 রেজিস্ট্রেশন সফল! স্বাগতম <b>{clean_name}</b>।", reply_markup=main_menu(message.from_user))
+        bot.send_message(user_id, f"🎊 রেজিস্ট্রেশন সফল! স্বাগতম <b>{clean_name}</b>।", reply_markup=main_menu(message.from_user))
+        
     except Exception as e:
-        bot.send_message(message.chat.id, "❌ রেজিস্ট্রেশনে সমস্যা হয়েছে।")
+        # এবার বট আপনাকে পরিষ্কার বলবে কেন হচ্ছে না
+        bot.send_message(user_id, f"❌ ডাটাবেস এরর: {e}")
+        print(f"Error details: {e}")
 
 # =======================================================
 # ✅ অ্যাকশন বাটন লজিক (Approve / Reject / Work - ৩ নম্বর পার্ট)
