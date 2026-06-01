@@ -1,3 +1,4 @@
-pyTelegramBotAPI
+pymongo
+dnspython
+telebot
 flask
-psycopg2-binary
