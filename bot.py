@@ -666,7 +666,6 @@ def qa_details(call):
     elif call.data == 'qa_12':
         ans = 'A: I come to know this University from their University website and some of my Facebook friends are studying in this University also.'
     elif call.data == 'qa_13':
-    ...
         ans = 'A: Thank you sir. My University name is Kursk State University.'
     elif call.data == 'qa_14':
         ans = ('A: Kursk State University is Kursk\'s oldest higher educational institution, founded in 1934 as Kursk State Pedagogical Institute, '
@@ -677,7 +676,7 @@ def qa_details(call):
         ans = ('A: My major is Marketing.\nMarketing is a process by which companies create value for customers and build strong customer '
                'relationships to capture value from customers in return.\nMarketing is the act of satisfying and retaining customers.')
     elif call.data == 'qa_16':
-        ans = 'A: Here is your scholarship journey and subject details based on your preparation.'
+        ans = 'A: Here is your scholarship journey and subject details.'
     else:
         ans = 'A: Information not available.'
 
