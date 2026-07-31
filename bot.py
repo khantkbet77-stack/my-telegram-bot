@@ -1,559 +1,405 @@
-import datetime
-import os
-import threading
-import pytz
 import telebot
 from telebot import types
+import pytz
+import datetime
+import threading
+import time
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# --- Configuration & Credentials ---
+# ==========================================
+# 1. CONFIGURATION & SETUP
+# ==========================================
 API_TOKEN = "8683150922:AAFBcqOyG6YugrzfL6u3nRmu9zz9yJwqiDc"
-MASTER_PASSWORD = "4071041"
-ADMINS = ["alamin_041", "aminal041"]
-BACKUP_GROUP_ID = -1003210815541  # Group ID extracted from topic links
-
-# Topic Message Thread IDs
-TOPIC_LOGIN = 2
-TOPIC_SUPPORT = 5
-TOPIC_FORGOT = 6
-
 bot = telebot.TeleBot(API_TOKEN)
 
-# --- In-Memory Database ---
+ADMINS = ["alamin_041", "aminal041"]
+BACKUP_GROUP_ID = -1003210815541
+TOPIC_SUPPORT = 5
+TOPIC_APPLY = 9
+
+# Database simulation (In-memory)
 users_db = {}
-roll_counter = 10001
-pending_registrations = {}
+temp_data = {}
+roll_counter = 10000
 
+# ==========================================
+# 2. MULTI-LANGUAGE DICTIONARY
+# ==========================================
+lang_dict = {
+    'bn': {
+        'menu_chat': "💬 Live Chat",
+        'menu_apply': "📝 Apply Service",
+        'menu_docs': "📁 Documents",
+        'menu_embassy': "🏛️ Embassy Q&A",
+        'menu_exam': "📅 Exam Schedule",
+        'menu_contact': "📞 Contact Details",
+        'menu_admin': "🛠️ Admin Panel",
+        'not_approved': "❌ আপনার একাউন্ট এখনও অ্যাপ্রুভ হয়নি। ದয়া করে অপেক্ষা করুন।",
+        'ask_name': "আপনার পূর্ণাঙ্গ নাম লিখুন:",
+        'ask_wa': "আপনার WhatsApp নম্বর দিন:",
+        'cat_select': "সার্ভিস ক্যাটেগরি নির্বাচন করুন:",
+        'req_sent': "✅ আপনার রিকুয়েষ্ট পাঠানো হয়েছে।\nআপনার রোল নাম্বার: {roll}",
+        'chat_init': "💬 লাইভ চ্যাট শুরু হয়েছে। আপনার মেসেজ বা ফাইল পাঠান। চ্যাট শেষ করতে উপরের 'Chat Close' বাটনে ক্লিক করুন।",
+        'chat_close_btn': "❌ Chat Close",
+        'chat_closed_msg': "সময় ও আমাদের সাথে থাকার জন্য আপনাকে অসংখ্য ধন্যবাদ। পরবর্তীতে কোন সমস্যা হলে আমাদের সাথে অবশ্যই যোগাযোগ করবেন। আপনার জন্য শুভকামনা রইল!",
+        'contact_text': "🌟 *যোগাযোগ করুন* 🌟\n\nযেকোনো প্রয়োজনে আমাদের সাথে যুক্ত হতে পারেন:\n\n📘 Facebook: [Click Here](https://facebook.com)\n📱 WhatsApp: [Click Here](https://wa.me/)\n✈️ Telegram: [Click Here](https://t.me/)\n📧 Email: support@example.com\n📞 Phone: +8801234567890\n\n_আমরা সর্বদা আপনার সেবায় নিয়োজিত!_",
+        'no_exam_data': "❌ আপনার পরীক্ষার কোনো শিডিউল পাওয়া যায়নি।",
+        'exam_info': "📚 *আপনার পরীক্ষার শিডিউল*\n\n📖 বিষয়: {sub}\n📅 তারিখ: {date}\n⏰ সময়: {time}"
+    },
+    'en': {
+        'menu_chat': "💬 Live Chat",
+        'menu_apply': "📝 Apply Service",
+        'menu_docs': "📁 Documents",
+        'menu_embassy': "🏛️ Embassy Q&A",
+        'menu_exam': "📅 Exam Schedule",
+        'menu_contact': "📞 Contact Details",
+        'menu_admin': "🛠️ Admin Panel",
+        'not_approved': "❌ Your account is not approved yet. Please wait.",
+        'ask_name': "Please enter your full name:",
+        'ask_wa': "Please enter your WhatsApp number:",
+        'cat_select': "Select a service category:",
+        'req_sent': "✅ Your request has been sent.\nYour Roll Number: {roll}",
+        'chat_init': "💬 Live chat started. Send your message/file. Click 'Chat Close' above to end.",
+        'chat_close_btn': "❌ Chat Close",
+        'chat_closed_msg': "Thank you so much for your time and for staying with us. Contact us for any future issues. Best wishes to you!",
+        'contact_text': "🌟 *Contact Us* 🌟\n\nFeel free to reach out:\n\n📘 Facebook: [Click Here](https://facebook.com)\n📱 WhatsApp: [Click Here](https://wa.me/)\n✈️ Telegram: [Click Here](https://t.me/)\n📧 Email: support@example.com\n📞 Phone: +8801234567890\n\n_We are always here to help!_",
+        'no_exam_data': "❌ No exam schedule found for you.",
+        'exam_info': "📚 *Your Exam Schedule*\n\n📖 Subject: {sub}\n📅 Date: {date}\n⏰ Time: {time}"
+    }
+}
 
-# --- Dummy Web Server for Render Web Service (Port Binding) ---
+# ==========================================
+# 3. UTILITIES & DUMMY SERVER
+# ==========================================
+def get_live_time(lang):
+    bd_tz = pytz.timezone("Asia/Dhaka")
+    ru_tz = pytz.timezone("Europe/Moscow")
+    now_utc = datetime.datetime.now(pytz.utc)
+    bd_time = now_utc.astimezone(bd_tz).strftime("%d %B %Y, %I:%M %p")
+    ru_time = now_utc.astimezone(ru_tz).strftime("%d %B %Y, %I:%M %p")
+    
+    if lang == 'bn':
+        return f"🇧🇩 বাংলাদেশ: `{bd_time}`\n🇷🇺 রাশিয়া: `{ru_time}`\n"
+    else:
+        return f"🇧🇩 BD: `{bd_time}`\n🇷🇺 RU: `{ru_time}`\n"
+
 class SimpleHandler(BaseHTTPRequestHandler):
-
-  def do_GET(self):
-    self.send_response(200)
-    self.end_headers()
-    self.wfile.write(b"Edu Journey Bot is alive and running!")
-
-  def log_message(self, format, *args):
-    pass  # Terminal log পরিষ্কার রাখার জন্য
-
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
 
 def run_web_server():
-  port = int(os.environ.get("PORT", 10000))
-  server = HTTPServer(("0.0.0.0", port), SimpleHandler)
-  server.serve_forever()
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
 
-
-# --- Time Utilities ---
-def get_live_times():
-  bd_tz = pytz.timezone("Asia/Dhaka")
-  ru_tz = pytz.timezone("Europe/Moscow")
-  now_utc = datetime.datetime.now(pytz.utc)
-
-  bd_time = now_utc.astimezone(bd_tz).strftime("%d %B %Y, %I:%M %p")
-  ru_time = now_utc.astimezone(ru_tz).strftime("%d %B %Y, %I:%M %p")
-  return bd_time, ru_time
-
-
-# --- Middleware / Security Decorator ---
 def is_admin(username):
-  if not username:
-    return False
-  return username.lower() in [a.lower() for a in ADMINS]
+    if not username: return False
+    return username.lower() in [a.lower() for a in ADMINS]
 
-
-# --- /start Command & Lock System ---
-@bot.message_handler(commands=["start"])
-def start_bot(message):
-  chat_id = message.chat.id
-  bd, ru = get_live_times()
-
-  welcome_text = (
-      f"🤖 *Edu: Journey Help Bot*\n\n"
-      f"🇧🇩 BD Time: `{bd}`\n"
-      f"🇷🇺 RU Time: `{ru}`\n\n"
-      f"🔒 বটটি বর্তমানে লক করা আছে। ব্যবহারের জন্য অনুগ্রহ করে মাস্টার পাসওয়ার্ড দিন:"
-  )
-
-  markup = types.InlineKeyboardMarkup()
-  markup.add(
-      types.InlineKeyboardButton("🔑 পাসওয়ার্ড দিন", callback_data="enter_pass"),
-      types.InlineKeyboardButton(
-          "💬 সাহায্য / সাপোর্ট", callback_data="support_start"
-      ),
-  )
-  bot.send_message(chat_id, welcome_text, parse_mode="Markdown", reply_markup=markup)
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "enter_pass")
-def ask_password(call):
-  msg = bot.send_message(
-      call.message.chat.id, "দয়া করে পাসওয়ার্ডটি টাইপ করে পাঠান:"
-  )
-  bot.register_next_step_handler(msg, verify_master_password)
-
-
-def verify_master_password(message):
-  chat_id = message.chat.id
-  if message.text.strip() == MASTER_PASSWORD:
-    if chat_id in users_db:
-      main_menu(chat_id, "স্বাগতম! আপনার বট ইতিমধ্যে আনলক করা আছে।")
-    else:
-      pending_registrations[chat_id] = {}
-      msg = bot.send_message(
-          chat_id,
-          "✅ পাসওয়ার্ড সঠিক!\n\nআপনার পূর্ণাঙ্গ নামটি (Full Name) লিখে পাঠান:",
-      )
-      bot.register_next_step_handler(msg, process_user_name)
-  else:
+# ==========================================
+# 4. BOT START & MAIN MENU
+# ==========================================
+@bot.message_handler(commands=['start'])
+def start_cmd(message):
+    chat_id = message.chat.id
+    if chat_id not in users_db:
+        users_db[chat_id] = {'lang': 'bn', 'is_approved': False, 'roll': None, 'exam_dt': None}
+    
     markup = types.InlineKeyboardMarkup()
     markup.add(
-        types.InlineKeyboardButton(
-            "🔄 পুনরায় চেষ্টা করুন", callback_data="enter_pass"
-        ),
-        types.InlineKeyboardButton(
-            "❓ পাসওয়ার্ড ভুলে গেছেন?", callback_data="forgot_pass"
-        ),
+        types.InlineKeyboardButton("🇧🇩 বাংলা", callback_data="lang_bn"),
+        types.InlineKeyboardButton("🇬🇧 English", callback_data="lang_en")
     )
-    bot.send_message(chat_id, "❌ ভুল পাসওয়ার্ড দিয়েছেন!", reply_markup=markup)
+    bot.send_message(chat_id, "ভাষা নির্বাচন করুন / Select Language:", reply_markup=markup)
 
-
-# --- Registration Flow ---
-def process_user_name(message):
-  chat_id = message.chat.id
-  pending_registrations[chat_id]["name"] = message.text.strip()
-
-  markup = types.InlineKeyboardMarkup()
-  markup.add(
-      types.InlineKeyboardButton("Self Fund", callback_data="cat_self"),
-      types.InlineKeyboardButton("Scholarship", callback_data="cat_sch"),
-  )
-  bot.send_message(
-      chat_id, "আপনার ক্যাটেগরি সিলেক্ট করুন:", reply_markup=markup
-  )
-
-
-@bot.callback_query_handler(
-    func=lambda call: call.data in ["cat_self", "cat_sch"]
-)
-def process_category(call):
-  chat_id = call.message.chat.id
-  category = "Self Fund" if call.data == "cat_self" else "Scholarship"
-  pending_registrations[chat_id]["category"] = category
-
-  markup = types.InlineKeyboardMarkup()
-  markup.add(
-      types.InlineKeyboardButton(
-          "🤖 অটো জেনারেট পাসওয়ার্ড", callback_data="pass_auto"
-      ),
-      types.InlineKeyboardButton(
-          "✍️ নিজের পছন্দমতো পাসওয়ার্ড", callback_data="pass_custom"
-      ),
-  )
-  bot.edit_message_text(
-      "আপনার ব্যক্তিগত পাসওয়ার্ড সেট করার পদ্ধতি বেছে নিন:",
-      chat_id,
-      call.message.message_id,
-      reply_markup=markup,
-  )
-
-
-@bot.callback_query_handler(
-    func=lambda call: call.data in ["pass_auto", "pass_custom"]
-)
-def process_pass_choice(call):
-  chat_id = call.message.chat.id
-  if call.data == "pass_auto":
-    import random
-
-    password = str(random.randint(100000, 999999))
-    finalize_registration(chat_id, password, call.message)
-  else:
-    msg = bot.send_message(chat_id, "আপনার পছন্দমতো পাসওয়ার্ডটি লিখে পাঠান:")
-    bot.register_next_step_handler(msg, process_custom_password_step)
-
-
-def process_custom_password_step(message):
-  finalize_registration(message.chat.id, message.text.strip(), message)
-
-
-def finalize_registration(chat_id, user_pass, message_obj):
-  global roll_counter
-  roll = roll_counter
-  roll_counter += 1
-
-  data = pending_registrations.get(chat_id, {})
-  name = data.get("name", "Unknown")
-  category = data.get("category", "General")
-  username = message_obj.from_user.username or "No Username"
-
-  users_db[chat_id] = {
-      "roll": roll,
-      "name": name,
-      "category": category,
-      "password": user_pass,
-      "status": "There are no updates",
-      "status_note": "রেজিস্ট্রেশন সফল হয়েছে।",
-      "exam_subject": "Not Set",
-      "exam_date": "Not Set",
-      "exam_time": "Not Set",
-  }
-
-  log_text = (
-      f"📥 *New User Registration*\n"
-      f"🆔 Roll: `{roll}`\n"
-      f"👤 Name: {name}\n"
-      f"🏷️ Category: {category}\n"
-      f"🔑 User Password: `{user_pass}`\n"
-      f"🔗 Telegram: @{username} (ID: `{chat_id}`)"
-  )
-  bot.send_message(
-      BACKUP_GROUP_ID, log_text, parse_mode="Markdown", message_thread_id=TOPIC_LOGIN
-  )
-
-  success_msg = (
-      f"🎉 অভিনন্দন! আপনার রেজিস্ট্রেশন সফল হয়েছে।\n\n"
-      f"📌 আপনার রোল নম্বর: `{roll}`\n"
-      f"🔑 আপনার পাসওয়ার্ড: `{user_pass}`"
-  )
-  bot.send_message(chat_id, success_msg, parse_mode="Markdown")
-  main_menu(chat_id, "প্রধান মেনুতে স্বাগতম:")
-
-
-# --- Forgot Password Handler ---
-@bot.callback_query_handler(func=lambda call: call.data == "forgot_pass")
-def forgot_password_start(call):
-  msg = bot.send_message(
-      call.message.chat.id,
-      "আপনার **রোল নম্বর** বা **নাম** লিখে পাঠান যাতে এডমিন চিনতে পারেন:",
-  )
-  bot.register_next_step_handler(msg, process_forgot_password)
-
-
-def process_forgot_password(message):
-  chat_id = message.chat.id
-  text = message.text.strip()
-  username = message.from_user.username or "No Username"
-
-  forward_text = (
-      f"🔄 *Forgot Password Request*\n"
-      f"👤 Name/Details: {text}\n"
-      f"🔗 Telegram: @{username} (ID: `{chat_id}`)"
-  )
-  bot.send_message(
-      BACKUP_GROUP_ID,
-      forward_text,
-      parse_mode="Markdown",
-      message_thread_id=TOPIC_FORGOT,
-  )
-  bot.send_message(
-      chat_id,
-      "✅ আপনার পাসওয়ার্ড রিকোয়েস্টটি এডমিনের কাছে পাঠানো হয়েছে। খুব শীঘ্রই আপনাকে"
-      " জানানো হবে।",
-  )
-
-
-# --- Main Menu ---
-def main_menu(chat_id, text_note):
-  bd, ru = get_live_times()
-  markup = types.InlineKeyboardMarkup(row_width=2)
-  markup.add(
-      types.InlineKeyboardButton(
-          "📊 স্ট্যাটাস ও শিডিউল চেক", callback_data="check_status"
-      ),
-      types.InlineKeyboardButton("📁 ডকুমেন্টস গাইড", callback_data="docs_guide"),
-      types.InlineKeyboardButton(
-          "💬 সাহায্য (Support)", callback_data="support_start"
-      ),
-  )
-  try:
-    if is_admin(bot.get_chat(chat_id).username):
-      markup.add(
-          types.InlineKeyboardButton("🛠️ এডমিন প্যানেল", callback_data="admin_panel")
-      )
-  except Exception:
-    pass
-
-  menu_text = f"{text_note}\n\n🇧🇩 BD Time: `{bd}`\n🇷🇺 RU Time: `{ru}`"
-  bot.send_message(chat_id, menu_text, parse_mode="Markdown", reply_markup=markup)
-
-
-# --- Status & Exam Schedule Check ---
-@bot.callback_query_handler(func=lambda call: call.data == "check_status")
-def prompt_roll_for_status(call):
-  msg = bot.send_message(
-      call.message.chat.id, "আপনার **রোল নম্বর** (যেমন: 10001) লিখে পাঠান:"
-  )
-  bot.register_next_step_handler(msg, show_user_status_result)
-
-
-def show_user_status_result(message):
-  chat_id = message.chat.id
-  try:
-    roll = int(message.text.strip())
-  except ValueError:
-    bot.send_message(chat_id, "❌ সঠিক রোল নম্বর দিন (শুধু সংখ্যা)।")
-    return
-
-  target_user = None
-  for u_id, u_data in users_db.items():
-    if u_data["roll"] == roll:
-      target_user = u_data
-      break
-
-  if target_user:
-    res_text = (
-        f"📋 *Roll No: {target_user['roll']}*\n"
-        f"👤 Name: {target_user['name']}\n"
-        f"📌 Status: *{target_user['status']}*\n"
-        f"📝 Note: {target_user['status_note']}\n\n"
-        f"📚 Exam Subject: {target_user['exam_subject']}\n"
-        f"📅 Exam Date: {target_user['exam_date']}\n"
-        f"⏰ Exam Time: {target_user['exam_time']}"
-    )
-    bot.send_message(chat_id, res_text, parse_mode="Markdown")
-  else:
-    bot.send_message(chat_id, "❌ এই রোল নম্বরের কোনো ডাটা পাওয়া যায়নি।")
-
-
-# --- Document Guide Menu ---
-@bot.callback_query_handler(func=lambda call: call.data == "docs_guide")
-def docs_guide_menu(call):
-  markup = types.InlineKeyboardMarkup(row_width=1)
-  markup.add(
-      types.InlineKeyboardButton("🇷🇺 রাশিয়া Self fund", callback_data="doc_self"),
-      types.InlineKeyboardButton(
-          "🇷🇺 Russia Scholarship", callback_data="doc_russia_sch"
-      ),
-      types.InlineKeyboardButton(
-          "🏛️ Embassy Document - Scholarship", callback_data="doc_embassy"
-      ),
-      types.InlineKeyboardButton("🔙 মূল মেনু", callback_data="back_to_menu"),
-  )
-  bot.edit_message_text(
-      "কোন ক্যাটেগরির ডকুমেন্টস দেখতে চান সিলেক্ট করুন:",
-      call.message.chat.id,
-      call.message.message_id,
-      reply_markup=markup,
-  )
-
-
-@bot.callback_query_handler(
-    func=lambda call: call.data
-    in ["doc_self", "doc_russia_sch", "doc_embassy", "back_to_menu"]
-)
-def handle_doc_categories(call):
-  chat_id = call.message.chat.id
-  if call.data == "back_to_menu":
+@bot.callback_query_handler(func=lambda call: call.data in ['lang_bn', 'lang_en'])
+def set_lang(call):
+    chat_id = call.message.chat.id
+    lang = 'bn' if call.data == 'lang_bn' else 'en'
+    users_db[chat_id]['lang'] = lang
     bot.delete_message(chat_id, call.message.message_id)
-    main_menu(chat_id, "মূল মেনু:")
-    return
+    show_main_menu(chat_id)
 
-  if call.data == "doc_self":
-    text = (
-        "🇷🇺 *রাশিয়া Self fund ডকুমেন্টস তালিকা:*\n\n"
-        "১. Academy marksheet certificate (SSC+HSC)\n"
-        "২. পাসপোর্ট\n"
-        "৩. একাডেমিক সকল সার্টিফিকেট এপোস্টিল\n"
-        "৪. AFFIDAVIT\n"
-        "৫. ছবি: সাদা ব্যাকগ্রাউন্ড, ৩.৫×৪.৫ সেমি ল্যাব প্রিন্ট"
-    )
-  elif call.data == "doc_russia_sch":
-    text = (
-        "🇷🇺 *Russia Scholarship ডকুমেন্টস তালিকা:*\n\n"
-        "১. Academy marksheet certificate\n"
-        "২. পাসপোর্ট\n"
-        "৩. Phone Number\n"
-        "৪. একাডেমিক সার্টিফিকেট এপোস্টিল\n"
-        "৫. ছবি ও স্বাক্ষর"
-    )
-  else:
-    text = (
-        "🏛️ *Embassy Document - Scholarship:*\n\n"
-        "১. Minister letter\n"
-        "২. এপ্লিকেশন ফরম\n"
-        "৩. ডিপ্লোমা সার্টিফিকেট\n"
-        "৪. মেডিকেল সার্টিফিকেট\n"
-        "৫. SSC+HSC সার্টিফিকেট মার্কশিট + এপোস্টিল\n"
-        "৬. পাসপোর্ট ফটোকপি + মূল পাসপোর্ট"
-    )
+def show_main_menu(chat_id):
+    u_data = users_db.get(chat_id, {'lang': 'bn', 'is_approved': False})
+    lang = u_data['lang']
+    t_dict = lang_dict[lang]
+    
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    
+    # Always visible
+    markup.add(t_dict['menu_chat'], t_dict['menu_apply'])
+    
+    # Visible only if approved
+    if u_data.get('is_approved'):
+        markup.add(t_dict['menu_docs'], t_dict['menu_embassy'])
+        markup.add(t_dict['menu_exam'], t_dict['menu_contact'])
+        
+    # Visible only to admins
+    try:
+        username = bot.get_chat(chat_id).username
+        if is_admin(username):
+            markup.add(t_dict['menu_admin'])
+    except: pass
 
-  markup = types.InlineKeyboardMarkup()
-  markup.add(types.InlineKeyboardButton("🔙 পেছনে যান", callback_data="docs_guide"))
-  bot.edit_message_text(
-      text,
-      chat_id,
-      call.message.message_id,
-      parse_mode="Markdown",
-      reply_markup=markup,
-  )
+    header = get_live_time(lang)
+    bot.send_message(chat_id, header + "\nমেনু থেকে নির্বাচন করুন:", parse_mode="Markdown", reply_markup=markup)
 
+# ==========================================
+# 5. APPLY SERVICE
+# ==========================================
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_apply'], lang_dict['en']['menu_apply']])
+def apply_service(message):
+    chat_id = message.chat.id
+    lang = users_db[chat_id]['lang']
+    if users_db[chat_id].get('is_approved'):
+        bot.send_message(chat_id, "You are already approved!" if lang == 'en' else "আপনি ইতিমধ্যেই অ্যাপ্রুভড!")
+        return
 
-# --- Support & Live Chat ---
-@bot.callback_query_handler(func=lambda call: call.data == "support_start")
-def support_start(call):
-  chat_id = call.message.chat.id
-  bot.send_message(
-      chat_id,
-      "💬 সাপোর্ট সেকশনে স্বাগতম। আপনার রোল নম্বর উল্লেখ করে আপনার প্রশ্ন বা"
-      " ডকুমেন্ট এখানে পাঠিয়ে দিন:",
-  )
+    temp_data[chat_id] = {}
+    msg = bot.send_message(chat_id, lang_dict[lang]['ask_name'])
+    bot.register_next_step_handler(msg, step_wa)
 
+def step_wa(message):
+    chat_id = message.chat.id
+    temp_data[chat_id]['name'] = message.text
+    msg = bot.send_message(chat_id, lang_dict[users_db[chat_id]['lang']]['ask_wa'])
+    bot.register_next_step_handler(msg, step_cat)
 
-@bot.message_handler(
-    func=lambda message: message.text
-    and not message.text.startswith("/")
-    and message.chat.id != BACKUP_GROUP_ID
-)
-def handle_user_messages_to_support(message):
-  chat_id = message.chat.id
-  text = message.text
-  username = message.from_user.username or "No Username"
+def step_cat(message):
+    chat_id = message.chat.id
+    temp_data[chat_id]['wa'] = message.text
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("Scholarship Support", callback_data="cat_sch"),
+               types.InlineKeyboardButton("Bot Support", callback_data="cat_bot"))
+    bot.send_message(chat_id, lang_dict[users_db[chat_id]['lang']]['cat_select'], reply_markup=markup)
 
-  forward_text = (
-      f"💬 *Support Message*\n"
-      f"👤 From: @{username} (ID: `{chat_id}`)\n"
-      f"✉️ Message: {text}\n\n"
-      f"*(উত্তর দিতে চাইলে রোল বা আইডি ট্যাগ করুন)*"
-  )
-  bot.send_message(
-      BACKUP_GROUP_ID,
-      forward_text,
-      parse_mode="Markdown",
-      message_thread_id=TOPIC_SUPPORT,
-  )
-  bot.send_message(chat_id, "✅ আপনার বার্তাটি সাপোর্টে পাঠানো হয়েছে।")
+@bot.callback_query_handler(func=lambda c: c.data in ['cat_sch', 'cat_bot'])
+def finish_apply(call):
+    global roll_counter
+    chat_id = call.message.chat.id
+    lang = users_db[chat_id]['lang']
+    
+    roll_counter += 1
+    roll = roll_counter
+    users_db[chat_id]['roll'] = roll
+    users_db[chat_id]['name'] = temp_data[chat_id]['name']
+    
+    cat = "Scholarship Support" if call.data == 'cat_sch' else "Bot Support"
+    username = call.from_user.username or "No Username"
+    
+    # Notify User
+    bot.edit_message_text(lang_dict[lang]['req_sent'].format(roll=roll), chat_id, call.message.message_id)
+    
+    # Send to Admin Topic 9
+    admin_txt = f"📝 *Apply Service Request*\n\nRoll: `{roll}`\nName: {users_db[chat_id]['name']}\nWA: {temp_data[chat_id]['wa']}\nCategory: {cat}\nUser: @{username} (`{chat_id}`)"
+    
+    mk = types.InlineKeyboardMarkup()
+    mk.add(types.InlineKeyboardButton("✅ Approved", callback_data=f"apprv_{chat_id}"),
+           types.InlineKeyboardButton("❌ Rejected", callback_data=f"rej_{chat_id}"))
+    
+    bot.send_message(BACKUP_GROUP_ID, admin_txt, parse_mode="Markdown", message_thread_id=TOPIC_APPLY, reply_markup=mk)
 
-
-@bot.message_handler(
-    func=lambda message: message.chat.id == BACKUP_GROUP_ID
-    and message.message_thread_id == TOPIC_SUPPORT
-    and message.reply_to_message
-)
-def handle_admin_reply(message):
-  reply_text = message.reply_to_message.text or ""
-  import re
-
-  match = re.search(r"ID: `(\d+)`", reply_text)
-  if match:
-    target_chat_id = int(match.group(1))
-    bot.send_message(
-        target_chat_id, f"👨‍💻 *Admin Support:* {message.text}", parse_mode="Markdown"
-    )
-    bot.reply_to(message, "✅ ইউজারের কাছে উত্তর পাঠানো হয়েছে।")
-
-
-# --- Admin Panel ---
-@bot.callback_query_handler(func=lambda call: call.data == "admin_panel")
-def admin_panel_menu(call):
-  chat_id = call.message.chat.id
-  if not is_admin(call.from_user.username):
-    bot.answer_callback_query(call.id, "❌ আপনার এডমিন এক্সেস নেই!", show_alert=True)
-    return
-
-  markup = types.InlineKeyboardMarkup(row_width=1)
-  markup.add(
-      types.InlineKeyboardButton(
-          "⚙️ ইউজারের স্ট্যাটাস ও নোট আপডেট", callback_data="adm_up_status"
-      ),
-      types.InlineKeyboardButton(
-          "📅 পরীক্ষার শিডিউল ও সাবজেক্ট সেট", callback_data="adm_up_exam"
-      ),
-      types.InlineKeyboardButton("🔙 মূল মেনু", callback_data="back_to_menu"),
-  )
-  bot.edit_message_text(
-      "🛠️ *In-Bot Admin Panel*",
-      chat_id,
-      call.message.message_id,
-      parse_mode="Markdown",
-      reply_markup=markup,
-  )
-
-
-@bot.callback_query_handler(func=lambda call: call.data == "adm_up_status")
-def adm_up_status_prompt(call):
-  msg = bot.send_message(
-      call.message.chat.id,
-      "ইউজারের স্ট্যাটাস আপডেট করতে এই ফরমেটে লিখে পাঠান:\n`রোল, স্ট্যাটাস, নোট`",
-  )
-  bot.register_next_step_handler(msg, save_admin_status_update)
-
-
-def save_admin_status_update(message):
-  try:
-    parts = message.text.split(",", 2)
-    roll = int(parts[0].strip())
-    status = parts[1].strip()
-    note = parts[2].strip()
-
-    updated = False
-    for u_id, u_data in users_db.items():
-      if u_data["roll"] == roll:
-        u_data["status"] = status
-        u_data["status_note"] = note
-        updated = True
-        bot.send_message(
-            u_id,
-            f"🔔 *আপনার স্ট্যাটাস আপডেট হয়েছে!*\n📌 Status: *{status}*\n📝 Note:"
-            f" {note}",
-            parse_mode="Markdown",
-        )
-        break
-
-    if updated:
-      bot.send_message(message.chat.id, "✅ স্ট্যাটাস সফলভাবে আপডেট করা হয়েছে।")
+@bot.callback_query_handler(func=lambda c: c.data.startswith('apprv_') or c.data.startswith('rej_'))
+def handle_approval(call):
+    action, uid = call.data.split('_')
+    uid = int(uid)
+    
+    if action == 'apprv':
+        users_db[uid]['is_approved'] = True
+        bot.edit_message_text(call.message.text + "\n\n✅ *Status: APPROVED*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+        lang = users_db[uid]['lang']
+        txt = "Your service request has been APPROVED!" if lang == 'en' else "আপনার সার্ভিস রিকোয়েস্ট Approved করা হয়েছে!"
+        bot.send_message(uid, txt)
+        show_main_menu(uid)
     else:
-      bot.send_message(message.chat.id, "❌ এই রোল নম্বরের ইউজার পাওয়া যায়নি।")
-  except Exception:
-    bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। সঠিক ফরম্যাটে দিন।")
+        bot.edit_message_text(call.message.text + "\n\n❌ *Status: REJECTED*", call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+        # Can add custom reject note logic here
 
+# ==========================================
+# 6. LIVE CHAT SYSTEM
+# ==========================================
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_chat'], lang_dict['en']['menu_chat']])
+def start_live_chat(message):
+    chat_id = message.chat.id
+    lang = users_db.get(chat_id, {}).get('lang', 'bn')
+    
+    mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    mk.add(lang_dict[lang]['chat_close_btn'])
+    
+    bot.send_message(chat_id, lang_dict[lang]['chat_init'], reply_markup=mk)
+    users_db[chat_id]['in_chat'] = True
 
-@bot.callback_query_handler(func=lambda call: call.data == "adm_up_exam")
-def adm_up_exam_prompt(call):
-  msg = bot.send_message(
-      call.message.chat.id,
-      "পরীক্ষার শিডিউল সেট করতে এই ফরমেটে লিখে পাঠান:\n`রোল, সাবজেক্ট, তারিখ,"
-      " সময়`",
-  )
-  bot.register_next_step_handler(msg, save_admin_exam_update)
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['chat_close_btn'], lang_dict['en']['chat_close_btn']])
+def user_close_chat(message):
+    chat_id = message.chat.id
+    roll = users_db.get(chat_id, {}).get('roll', 'Unknown')
+    users_db[chat_id]['in_chat'] = False
+    
+    mk = types.InlineKeyboardMarkup()
+    mk.add(types.InlineKeyboardButton("✅ Confirm Close (OK)", callback_data=f"closechat_{chat_id}"))
+    bot.send_message(BACKUP_GROUP_ID, f"🛑 User Roll: {roll} requested to close the chat.", message_thread_id=TOPIC_SUPPORT, reply_markup=mk)
+    
+    show_main_menu(chat_id)
 
+@bot.callback_query_handler(func=lambda c: c.data.startswith('closechat_'))
+def admin_confirm_close(call):
+    uid = int(call.data.split('_')[1])
+    lang = users_db.get(uid, {}).get('lang', 'bn')
+    bot.send_message(uid, lang_dict[lang]['chat_closed_msg'])
+    bot.edit_message_text("✅ Chat closed successfully.", call.message.chat.id, call.message.message_id)
 
-def save_admin_exam_update(message):
-  try:
-    parts = message.text.split(",", 3)
-    roll = int(parts[0].strip())
-    subject = parts[1].strip()
-    date = parts[2].strip()
-    time_str = parts[3].strip()
+# Forward user msgs to Topic 5
+@bot.message_handler(content_types=['text', 'photo', 'document'], func=lambda m: m.chat.type == 'private' and users_db.get(m.chat.id, {}).get('in_chat', False))
+def forward_to_admin(message):
+    chat_id = message.chat.id
+    roll = users_db.get(chat_id, {}).get('roll', 'N/A')
+    name = users_db.get(chat_id, {}).get('name', 'N/A')
+    
+    caption = f"💬 [Roll: {roll}] {name}\nID: `{chat_id}`"
+    
+    mk = types.InlineKeyboardMarkup()
+    mk.add(types.InlineKeyboardButton("🕒 Busy", callback_data=f"chatbusy_{chat_id}"),
+           types.InlineKeyboardButton("🟢 Join Now", callback_data=f"chatjoin_{chat_id}"))
+    
+    if message.content_type == 'text':
+        bot.send_message(BACKUP_GROUP_ID, f"{caption}\n\n{message.text}", message_thread_id=TOPIC_SUPPORT, reply_markup=mk)
+    elif message.content_type == 'photo':
+        bot.send_photo(BACKUP_GROUP_ID, message.photo[-1].file_id, caption=caption, message_thread_id=TOPIC_SUPPORT, reply_markup=mk)
+    elif message.content_type == 'document':
+        bot.send_document(BACKUP_GROUP_ID, message.document.file_id, caption=caption, message_thread_id=TOPIC_SUPPORT, reply_markup=mk)
 
-    updated = False
-    for u_id, u_data in users_db.items():
-      if u_data["roll"] == roll:
-        u_data["exam_subject"] = subject
-        u_data["exam_date"] = date
-        u_data["exam_time"] = time_str
-        updated = True
-        bot.send_message(
-            u_id,
-            f"📚 *নতুন পরীক্ষার শিডিউল!*\nSubject: {subject}\nDate: {date}\nTime:"
-            f" {time_str}",
-            parse_mode="Markdown",
-        )
-        break
-
-    if updated:
-      bot.send_message(message.chat.id, "✅ পরীক্ষার শিডিউল সফলভাবে সেট করা হয়েছে।")
+@bot.callback_query_handler(func=lambda c: c.data.startswith('chatbusy_') or c.data.startswith('chatjoin_'))
+def admin_chat_action(call):
+    action, uid = call.data.split('_')
+    uid = int(uid)
+    lang = users_db.get(uid, {}).get('lang', 'bn')
+    
+    if action == 'chatbusy':
+        txt = "We are currently busy. Please leave your message, we will reply soon." if lang == 'en' else "আমরা বর্তমানে একটু ব্যস্ত আছি। দয়া করে আপনার মেসেজ দিয়ে রাখুন, শীঘ্রই রিপ্লাই দেওয়া হবে।"
+        bot.send_message(uid, txt)
     else:
-      bot.send_message(message.chat.id, "❌ রোল নম্বর পাওয়া যায়নি।")
-  except Exception:
-    bot.send_message(message.chat.id, "❌ ফরম্যাট ভুল হয়েছে। আবার চেষ্টা করুন।")
+        txt = "Admin joined the chat. Please explain your issue in detail." if lang == 'en' else "এডমিন চ্যাটে জয়েন করেছেন। দয়া করে আপনার সমস্যাটি বিস্তারিত বলুন।"
+        bot.send_message(uid, txt)
+    
+    bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
 
+# Admin replies to User
+@bot.message_handler(func=lambda m: m.chat.id == BACKUP_GROUP_ID and m.message_thread_id == TOPIC_SUPPORT and m.reply_to_message)
+def admin_reply(message):
+    try:
+        import re
+        reply_txt = message.reply_to_message.text or message.reply_to_message.caption
+        match = re.search(r"ID: `(\d+)`", reply_txt)
+        if match:
+            target_id = int(match.group(1))
+            if message.content_type == 'text':
+                bot.send_message(target_id, f"👨‍💻 *Admin:* {message.text}", parse_mode="Markdown")
+            elif message.content_type == 'photo':
+                bot.send_photo(target_id, message.photo[-1].file_id, caption="👨‍💻 *Admin:* " + (message.caption or ""), parse_mode="Markdown")
+            elif message.content_type == 'document':
+                bot.send_document(target_id, message.document.file_id, caption="👨‍💻 *Admin:* " + (message.caption or ""), parse_mode="Markdown")
+    except: pass
 
-# --- Main Execution ---
+# ==========================================
+# 7. MENU: CONTACT, EXAM, DOCS, EMBASSY
+# ==========================================
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_contact'], lang_dict['en']['menu_contact']])
+def show_contact(message):
+    lang = users_db[message.chat.id]['lang']
+    bot.send_message(message.chat.id, lang_dict[lang]['contact_text'], parse_mode="Markdown", disable_web_page_preview=True)
+
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_exam'], lang_dict['en']['menu_exam']])
+def show_exam(message):
+    uid = message.chat.id
+    lang = users_db[uid]['lang']
+    if not users_db[uid].get('exam_sub'):
+        bot.send_message(uid, lang_dict[lang]['no_exam_data'])
+    else:
+        txt = lang_dict[lang]['exam_info'].format(
+            sub=users_db[uid]['exam_sub'], date=users_db[uid]['exam_date'], time=users_db[uid]['exam_time']
+        )
+        bot.send_message(uid, txt, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_docs'], lang_dict['en']['menu_docs']])
+def show_docs(message):
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton("🇷🇺 রাশিয়া Self fund", callback_data="doc_self"),
+        types.InlineKeyboardButton("🇷🇺 Russia Scholarship", callback_data="doc_sch"),
+        types.InlineKeyboardButton("🏛️ Embassy Document", callback_data="doc_emb")
+    )
+    bot.send_message(message.chat.id, "Select Document Category:", reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('doc_'))
+def doc_details(call):
+    if call.data == 'doc_self':
+        txt = "🇷🇺 *Self fund Documents:*\n1. Academy marksheet\n2. Passport\n3. Certificate Apostille\n4. AFFIDAVIT\n5. Photo 3.5x4.5 lab print"
+    elif call.data == 'doc_sch':
+        txt = "🇷🇺 *Scholarship Documents:*\n1. Academy marksheet\n2. Passport\n3. Phone Number\n4. Certificate Apostille\n5. Photo & Signature"
+    else:
+        txt = "🏛️ *Embassy Documents:*\n1. Minister letter\n2. Application Form\n3. Diploma\n4. Medical Certificate\n5. Marksheet + Apostille\n6. Passport Copy + Original"
+    bot.edit_message_text(txt, call.message.chat.id, call.message.message_id, parse_mode="Markdown")
+
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_embassy'], lang_dict['en']['menu_embassy']])
+def show_embassy(message):
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton("Q: Why Russia?", callback_data="qa_russia"),
+        types.InlineKeyboardButton("Q: Why this University?", callback_data="qa_uni"),
+        types.InlineKeyboardButton("Q: Who is your sponsor?", callback_data="qa_sponsor")
+    )
+    bot.send_message(message.chat.id, "🏛️ *Embassy Interview Q&A*", parse_mode="Markdown", reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('qa_'))
+def qa_details(call):
+    if call.data == 'qa_russia':
+        ans = "A: Russia provides the best quality education. Degrees are globally accepted, and living costs are affordable."
+    elif call.data == 'qa_uni':
+        ans = "A: It is one of the oldest universities. The course matches my previous study and tuition is affordable."
+    else:
+        ans = "A: My father is my sponsor. He is a businessman..."
+    bot.answer_callback_query(call.id, ans, show_alert=True)
+
+# ==========================================
+# 8. ADMIN PANEL & EXAM ALERTS
+# ==========================================
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_admin'], lang_dict['en']['menu_admin']])
+def admin_panel(message):
+    if not is_admin(message.from_user.username): return
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(types.InlineKeyboardButton("👥 User Details", callback_data="adm_users"),
+           types.InlineKeyboardButton("📅 Exam Schedule Set", callback_data="adm_exam"),
+           types.InlineKeyboardButton("📢 All User Notice", callback_data="adm_notice"))
+    bot.send_message(message.chat.id, "🛠️ *Admin Panel*", parse_mode="Markdown", reply_markup=mk)
+
+def exam_alert_thread():
+    while True:
+        now = datetime.datetime.now()
+        for uid, data in users_db.items():
+            if data.get('exam_dt'):
+                dt = data['exam_dt']
+                diff = (dt - now).total_seconds()
+                if 3540 <= diff <= 3600: # Exactly 1 hour before
+                    bot.send_message(uid, "⚠️ *Reminder:* Your exam starts in 1 hour!", parse_mode="Markdown")
+                    data['exam_dt'] = None # prevent duplicate alerts
+        time.sleep(60)
+
+# ==========================================
+# RUN BOT
+# ==========================================
 if __name__ == "__main__":
-  # ব্যাকগ্রাউন্ডে ডামি ওয়েব সার্ভার চালু করা (যাতে Render-এর পোর্ট টাইমআউট না হয়)
-  server_thread = threading.Thread(target=run_web_server)
-  server_thread.daemon = True
-  server_thread.start()
+    t1 = threading.Thread(target=run_web_server)
+    t1.daemon = True
+    t1.start()
+    
+    t2 = threading.Thread(target=exam_alert_thread)
+    t2.daemon = True
+    t2.start()
 
-  print("Bot is running smoothly with Web Service support...")
-  bot.infinity_polling()
+    print("Bot is running...")
+    bot.infinity_polling()
