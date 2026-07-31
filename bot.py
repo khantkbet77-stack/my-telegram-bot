@@ -371,7 +371,15 @@ def start_live_chat(message):
 def user_close_chat(message):
   chat_id = message.chat.id
   roll = users_db.get(chat_id, {}).get('roll', 'Unknown')
-  users_db[chat_id]['in_chat'] = False
+  lang = users_db.get(chat_id, {}).get('lang', 'bn')
+  
+  # চ্যাট এখনই Close করা হচ্ছে না
+  wait_msg = (
+      "Your request to close the chat has been sent. Please wait for the admin."
+      if lang == 'en'
+      else "আপনার চ্যাট ক্লোজ রিকোয়েস্ট এডমিনের কাছে পাঠানো হয়েছে। এডমিন ক্লোজ করা পর্যন্ত অপেক্ষা করুন।"
+  )
+  bot.send_message(chat_id, wait_msg)
 
   mk = types.InlineKeyboardMarkup()
   mk.add(
@@ -386,17 +394,24 @@ def user_close_chat(message):
       reply_markup=mk,
   )
 
-  show_main_menu(chat_id)
-
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('closechat_'))
 def admin_confirm_close(call):
   uid = int(call.data.split('_')[1])
   lang = users_db.get(uid, {}).get('lang', 'bn')
+  
+  # ইউজারের ডাটাবেসে চ্যাট স্ট্যাটাস False করা
+  if uid in users_db:
+      users_db[uid]['in_chat'] = False
+      
+  # ইউজারকে চ্যাট শেষের মেসেজ পাঠানো
   bot.send_message(uid, lang_dict[lang]['chat_closed_msg'])
   bot.edit_message_text(
       '✅ Chat closed successfully.', call.message.chat.id, call.message.message_id
   )
+  
+  # ইউজারের কাছে আবার মেইন মেনু ফিরিয়ে আনা
+  show_main_menu(uid)
 
 
 # Forward user msgs to Topic 5
@@ -420,6 +435,12 @@ def forward_to_admin(message):
       types.InlineKeyboardButton(
           '🟢 Join Now', callback_data=f'chatjoin_{chat_id}'
       ),
+  )
+  # এডমিনের জন্য চ্যাট ক্লোজ বাটন যুক্ত করা হলো
+  mk.add(
+      types.InlineKeyboardButton(
+          '🛑 Close Chat', callback_data=f'closechat_{chat_id}'
+      )
   )
 
   if message.content_type == 'text':
@@ -461,8 +482,8 @@ def admin_chat_action(call):
         'We are currently busy. Please leave your message, we will reply soon.'
         if lang == 'en'
         else (
-            'আমরা বর্তমানে একটু ব্যস্ত আছি। দয়া করে আপনার মেসেজ দিয়ে রাখুন,'
-            ' শীঘ্রই রিপ্লাই দেওয়া হবে।'
+            'আমরা বর্তমানে একটু ব্যস্ত আছি। দয়া করে আপনার মেসেজ দিয়ে রাখুন,'
+            ' শীঘ্রই রিপ্লাই দেওয়া হবে।'
         )
     )
     bot.send_message(uid, txt)
@@ -471,14 +492,21 @@ def admin_chat_action(call):
         'Admin joined the chat. Please explain your issue in detail.'
         if lang == 'en'
         else (
-            'এডমিন চ্যাটে জয়েন করেছেন। দয়া করে আপনার সমস্যাটি বিস্তারিত'
+            'এডমিন চ্যাটে জয়েন করেছেন। দয়া করে আপনার সমস্যাটি বিস্তারিত'
             ' বলুন।'
         )
     )
     bot.send_message(uid, txt)
 
+  # Busy বা Join Now বাটনের জায়গায় Close Chat বাটন রাখা হলো
+  mk_close = types.InlineKeyboardMarkup()
+  mk_close.add(
+      types.InlineKeyboardButton(
+          '🛑 Close Chat', callback_data=f'closechat_{uid}'
+      )
+  )
   bot.edit_message_reply_markup(
-      call.message.chat.id, call.message.message_id, reply_markup=None
+      call.message.chat.id, call.message.message_id, reply_markup=mk_close
   )
 
 
