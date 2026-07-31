@@ -680,7 +680,9 @@ def qa_details(call):
     else:
         ans = 'A: Information not available.'
 
-    bot.answer_callback_query(call.id, ans, show_alert=True)
+    # পপ-আপ অ্যালার্টের বদলে সরাসরি মেসেজ পাঠানোর জন্য:
+    bot.send_message(call.message.chat.id, ans)
+    bot.answer_callback_query(call.id)
 
 
 # ==========================================
