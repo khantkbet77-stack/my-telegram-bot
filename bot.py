@@ -580,22 +580,26 @@ def show_contact(message):
   )
 
 
+# === User Exam Schedule View Handler (Updated for Multiple Exams) ===
 @bot.message_handler(
     func=lambda m: m.text
     in [lang_dict['bn']['menu_exam'], lang_dict['en']['menu_exam']]
 )
-def show_exam(message):
-  uid = message.chat.id
-  lang = users_db[uid]['lang']
-  if not users_db[uid].get('exam_sub'):
-    bot.send_message(uid, lang_dict[lang]['no_exam_data'])
-  else:
-    txt = lang_dict[lang]['exam_info'].format(
-        sub=users_db[uid]['exam_sub'],
-        date=users_db[uid]['exam_date'],
-        time=users_db[uid]['exam_time'],
-    )
-    bot.send_message(uid, txt, parse_mode='Markdown')
+def user_exam_schedule(message):
+    chat_id = message.chat.id
+    exams = users_db.get(chat_id, {}).get('exams', [])
+    
+    if not exams:
+        bot.send_message(chat_id, "📅 আপনার এখনো কোনো পরীক্ষার শিডিউল সেট করা হয়নি।")
+        return
+        
+    text = "📅 *আপনার পরীক্ষার রুটিন ও সময়সূচি:*\n\n"
+    for i, ex in enumerate(exams, 1):
+        text += f"{i}. *Subject:* {ex.get('sub')}\n"
+        text += f"   *Date:* {ex.get('date')}\n"
+        text += f"   *Time:* {ex.get('time')} *[{ex.get('tz', 'Dhaka Time')}]*\n\n"
+        
+    bot.send_message(chat_id, text, parse_mode='Markdown')
 
 
 @bot.message_handler(
