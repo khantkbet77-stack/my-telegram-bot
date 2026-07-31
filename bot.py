@@ -11,7 +11,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 # 1. CONFIGURATION & SETUP
 # ==========================================
 API_TOKEN = "8683150922:AAFBcqOyG6YugrzfL6u3nRmu9zz9yJwqiDc"
-# HTML পার্সিং ব্যবহার করা হয়েছে স্টাইলিশ ডিজাইনের জন্য
 bot = telebot.TeleBot(API_TOKEN, parse_mode="HTML")
 
 ADMINS = ["alamin_041", "aminal041"]
@@ -26,7 +25,7 @@ temp_data = {}
 roll_counter = 10000
 
 # ==========================================
-# 2. MULTI-LANGUAGE DICTIONARY
+# 2. MULTI-LANGUAGE DICTIONARY (Fixed English/Bangla)
 # ==========================================
 lang_dict = {
     'bn': {
@@ -56,12 +55,12 @@ lang_dict = {
 }
 
 # ==========================================
-# 3. UTILITIES
+# 3. UTILITIES & BACKGROUND REMINDER THREAD
 # ==========================================
 def show_typing(chat_id):
     try:
         bot.send_chat_action(chat_id, 'typing')
-        time.sleep(0.5)
+        time.sleep(0.3)
     except:
         pass
 
@@ -93,6 +92,26 @@ def is_admin(username):
         return False
     return username.lower() in [a.lower() for a in ADMINS]
 
+# Background thread for 1 hour before exam auto-reminder
+def exam_reminder_checker():
+    while True:
+        try:
+            now = datetime.datetime.now()
+            for chat_id, data in users_db.items():
+                exam_dt = data.get('exam_dt')
+                if exam_dt and not data.get('reminder_sent', False):
+                    time_diff = exam_dt - now
+                    # If remaining time is between 59 to 61 minutes
+                    if 3540 <= time_diff.total_seconds() <= 3720:
+                        sub = data.get('exam_sub', 'Exam')
+                        dt = data.get('exam_date', '')
+                        tm = data.get('exam_time', '')
+                        bot.send_message(chat_id, f"⚠️ <b>সতর্কবার্তা (Reminder)!</b>\nআপনার আগামী ১ ঘণ্টার মধ্যে পরীক্ষা রয়েছে!\n📖 সাবজেক্ট: {sub}\n📅 তারিখ ও সময়: {dt} - {tm}")
+                        users_db[chat_id]['reminder_sent'] = True
+        except Exception as e:
+            print(f"Reminder Error: {e}")
+        time.sleep(60)
+
 # ==========================================
 # 4. BOT START & MAIN MENU
 # ==========================================
@@ -104,7 +123,7 @@ def start_cmd(message):
     if chat_id not in users_db:
         users_db[chat_id] = {
             'lang': 'bn', 'is_approved': False, 'roll': None, 
-            'exam_dt': None, 'exam_results': {}, 'status_msg': None
+            'exam_dt': None, 'exam_results': {}, 'status_msg': None, 'reminder_sent': False
         }
     
     markup = types.InlineKeyboardMarkup()
@@ -118,7 +137,10 @@ def start_cmd(message):
 def set_lang(call):
     chat_id = call.message.chat.id
     users_db[chat_id]['lang'] = 'bn' if call.data == 'lang_bn' else 'en'
-    bot.delete_message(chat_id, call.message.message_id)
+    try:
+        bot.delete_message(chat_id, call.message.message_id)
+    except:
+        pass
     show_main_menu(chat_id)
 
 def show_main_menu(chat_id):
@@ -145,7 +167,60 @@ def show_main_menu(chat_id):
     bot.send_message(chat_id, f"{header}\n✨ <b>মেইন মেনু</b> ✨", reply_markup=markup)
 
 # ==========================================
-# 5. APPLY SERVICE
+# 5. FIXED BUTTONS: Embassy Q&A, Documents, Exam Schedule
+# ==========================================
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_embassy'], lang_dict['en']['menu_embassy']])
+def embassy_qa_handler(message):
+    chat_id = message.chat.id
+    txt = (
+        "🏛️ <b>এম্বাসি প্রশ্নোত্তর (Embassy Q&A)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "১. ফাইল প্রসেসিং কতদিন সময় নেয়?\n"
+        "উত্তর: সাধারণত ২ থেকে ৩ সপ্তাহ সময় লাগে।\n\n"
+        "২. ইন্টারভিউয়ের জন্য কী প্রস্তুতি নিতে হবে?\n"
+        "উত্তর: বেসিক কমিউনিকেশন এবং ডকুমেন্ট ফাইল গুছিয়ে রাখতে হবে।"
+    )
+    bot.send_message(chat_id, txt)
+
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_docs'], lang_dict['en']['menu_docs']])
+def documents_handler(message):
+    chat_id = message.chat.id
+    txt = (
+        "📁 <b>প্রয়োজনীয় ডকুমেন্টস গাইডলাইন (Documents)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "• পাসপোর্ট (কমপক্ষে ৬ মাস মেয়াদ)\n"
+        "• ছবি (সাদা ব্যাকগ্রাউন্ড)\n"
+        "• একাডেমিক সার্টিফিকেট ও ট্রান্সক্রিপ্ট\n"
+        "• ব্যাংক সলভেন্সি সার্টিফিকেট"
+    )
+    bot.send_message(chat_id, txt)
+
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_exam'], lang_dict['en']['menu_exam']])
+def exam_schedule_user_handler(message):
+    chat_id = message.chat.id
+    u_data = users_db.get(chat_id, {})
+    sub = u_data.get('exam_sub')
+    dt = u_data.get('exam_date')
+    tm = u_data.get('exam_time')
+    
+    if sub and dt and tm:
+        txt = (
+            "📅 <b>আপনার পরীক্ষার শিডিউল:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📖 সাবজেক্ট: <b>{sub}</b>\n"
+            f"📅 তারিখ: <code>{dt}</code>\n"
+            f"⏰ সময়: <code>{tm}</code>"
+        )
+    else:
+        txt = "📅 <b>এক্সাম শিডিউল:</b>\nআপনার জন্য এখনো কোনো শিডিউল সেট করা হয়নি। এডমিন কর্তৃক সেট করার পর এখানে দেখতে পাবেন।"
+    bot.send_message(chat_id, txt)
+
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_contact'], lang_dict['en']['menu_contact']])
+def contact_handler(message):
+    bot.send_message(message.chat.id, "📞 <b>যোগাযোগ:</b>\nযেকোনো প্রয়োজনে লাইভ চ্যাটে আমাদের সাথে যোগাযোগ করুন।")
+
+# ==========================================
+# 6. APPLY SERVICE
 # ==========================================
 @bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_apply'], lang_dict['en']['menu_apply']])
 def apply_service(message):
@@ -181,7 +256,10 @@ def finish_apply(call):
     users_db[chat_id]['roll'] = roll
     users_db[chat_id]['name'] = temp_data[chat_id]['name']
     
-    bot.edit_message_text(f"✅ <b>রিকুয়েষ্ট সাবমিট হয়েছে!</b>\n🔖 রোল: <code>{roll}</code>", chat_id, call.message.message_id)
+    try:
+        bot.edit_message_text(f"✅ <b>রিকুয়েষ্ট সাবমিট হয়েছে!</b>\n🔖 রোল: <code>{roll}</code>", chat_id, call.message.message_id)
+    except:
+        pass
 
     mk = types.InlineKeyboardMarkup()
     mk.add(types.InlineKeyboardButton("✅ Approve", callback_data=f"apprv_{chat_id}"),
@@ -195,14 +273,20 @@ def handle_approval(call):
     uid = int(uid)
     if action == 'apprv':
         users_db[uid]['is_approved'] = True
-        bot.edit_message_text(call.message.text + "\n\n✅ <b>APPROVED</b>", call.message.chat.id, call.message.message_id)
+        try:
+            bot.edit_message_text(call.message.text + "\n\n✅ <b>APPROVED</b>", call.message.chat.id, call.message.message_id)
+        except:
+            pass
         bot.send_message(uid, "🎉 <b>অভিনন্দন!</b>\nআপনার একাউন্ট ভেরিফাই করা হয়েছে।")
         show_main_menu(uid)
     else:
-        bot.edit_message_text(call.message.text + "\n\n❌ <b>REJECTED</b>", call.message.chat.id, call.message.message_id)
+        try:
+            bot.edit_message_text(call.message.text + "\n\n❌ <b>REJECTED</b>", call.message.chat.id, call.message.message_id)
+        except:
+            pass
 
 # ==========================================
-# 6. LIVE CHAT SYSTEM
+# 7. LIVE CHAT SYSTEM
 # ==========================================
 @bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_chat'], lang_dict['en']['menu_chat']])
 def start_live_chat(message):
@@ -210,7 +294,7 @@ def start_live_chat(message):
     lang = users_db.get(chat_id, {}).get('lang', 'bn')
     mk = types.ReplyKeyboardMarkup(resize_keyboard=True)
     mk.add(lang_dict[lang]['chat_close_btn'])
-    bot.send_message(chat_id, "🎧 <b>সাপোর্টে স্বাগতম!</b>\nমেসেজ দিন। చ্যাট শেষ করতে নিচের বাটনে ক্লিক করুন।", reply_markup=mk)
+    bot.send_message(chat_id, "🎧 <b>সাপোর্টে স্বাগতম!</b>\nমেসেজ দিন। চ্যাট শেষ করতে নিচের বাটনে ক্লিক করুন।", reply_markup=mk)
     users_db[chat_id]['in_chat'] = True
 
 @bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['chat_close_btn'], lang_dict['en']['chat_close_btn']])
@@ -229,7 +313,10 @@ def admin_confirm_close(call):
     uid = int(call.data.split('_')[1])
     users_db[uid]['in_chat'] = False
     bot.send_message(uid, "✨ <b>চ্যাট সফলভাবে বন্ধ করা হয়েছে। ধন্যবাদ!</b>")
-    bot.edit_message_text("✅ Chat closed securely.", call.message.chat.id, call.message.message_id)
+    try:
+        bot.edit_message_text("✅ Chat closed securely.", call.message.chat.id, call.message.message_id)
+    except:
+        pass
     show_main_menu(uid)
 
 @bot.message_handler(content_types=['text', 'photo', 'document'], func=lambda m: m.chat.type == 'private' and users_db.get(m.chat.id, {}).get('in_chat', False))
@@ -249,14 +336,15 @@ def forward_to_admin(message):
 def admin_reply(message):
     import re
     reply_txt = message.reply_to_message.text or message.reply_to_message.caption
-    match = re.search(r'ID: <code>(\d+)</code>', reply_txt)
-    if match:
-        target_id = int(match.group(1))
-        if message.content_type == 'text':
-            bot.send_message(target_id, f"🎧 <b>Support:</b>\n{message.text}")
+    if reply_txt:
+        match = re.search(r'ID: <code>(\d+)</code>', reply_txt)
+        if match:
+            target_id = int(match.group(1))
+            if message.content_type == 'text':
+                bot.send_message(target_id, f"🎧 <b>Support:</b>\n{message.text}")
 
 # ==========================================
-# 7. USER STATUS SYSTEM
+# 8. USER STATUS SYSTEM
 # ==========================================
 @bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_status'], lang_dict['en']['menu_status']])
 def user_status_menu(message):
@@ -301,17 +389,18 @@ def handle_user_status_view(call):
         status = data.get('status_msg')
         if not status:
             bot.send_message(call.message.chat.id, "⏳ আপনার স্ট্যাটাস আপডেটের জন্য অ্যাডমিনকে রিকোয়েস্ট পাঠানো হয়েছে।")
-            # Alert Admin
             mk = types.InlineKeyboardMarkup()
             mk.add(types.InlineKeyboardButton("সেট করুন", callback_data=f"admstat_set_{uid}"))
             bot.send_message(BACKUP_GROUP_ID, f"🔔 <b>Status Request:</b>\nRoll: <code>{data.get('roll')}</code> স্ট্যাটাস জানতে চাইছে, কিন্তু সেট করা নেই!", reply_markup=mk)
         else:
-            # Format: In work (Activities are ongoing)
             bot.send_message(call.message.chat.id, f"🔄 <b>সর্বশেষ আপডেট:</b>\n\n( {status} )")
-    bot.answer_callback_query(call.id)
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
 
 # ==========================================
-# 8. SUPER ADMIN PANEL
+# 9. SUPER ADMIN PANEL & ALL USER NOTICE
 # ==========================================
 @bot.message_handler(func=lambda m: m.text in [lang_dict['bn']['menu_admin'], lang_dict['en']['menu_admin']])
 def admin_panel(message):
@@ -320,8 +409,9 @@ def admin_panel(message):
     mk = types.InlineKeyboardMarkup(row_width=1)
     mk.add(
         types.InlineKeyboardButton("👥 User Details (Remove/Manage)", callback_data="adm_users"),
-        types.InlineKeyboardButton("📅 Exam Schedule Set", callback_data="adm_exam"),
-        types.InlineKeyboardButton("📊 Status Update", callback_data="adm_status")
+        types.InlineKeyboardButton("📅 Exam Schedule Setup", callback_data="adm_exam"),
+        types.InlineKeyboardButton("📊 Status Update", callback_data="adm_status"),
+        types.InlineKeyboardButton("📢 All User Notice (Image/Text)", callback_data="adm_notice")
     )
     bot.send_message(message.chat.id, "🛠️ <b>এডমিন প্যানেল</b>", reply_markup=mk)
 
@@ -345,14 +435,20 @@ def admin_user_action(call):
     uid = call.data.split('_')[1]
     mk = types.InlineKeyboardMarkup()
     mk.add(types.InlineKeyboardButton("🗑️ রিমুভ করুন (Revoke)", callback_data=f"rmv_{uid}"))
-    bot.edit_message_text("এই ইউজারকে বাতিল করতে নিচের বাটনে ক্লিক করুন:", call.message.chat.id, call.message.message_id, reply_markup=mk)
+    try:
+        bot.edit_message_text("এই ইউজারকে বাতিল করতে নিচের বাটনে ক্লিক করুন:", call.message.chat.id, call.message.message_id, reply_markup=mk)
+    except:
+        pass
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('rmv_'))
 def execute_user_remove(call):
     uid = int(call.data.split('_')[1])
     if uid in users_db:
         users_db[uid]['is_approved'] = False
-        bot.edit_message_text("✅ ইউজারকে সফলভাবে রিমুভ করা হয়েছে।", call.message.chat.id, call.message.message_id)
+        try:
+            bot.edit_message_text("✅ ইউজারকে সফলভাবে রিমুভ করা হয়েছে।", call.message.chat.id, call.message.message_id)
+        except:
+            pass
         bot.send_message(uid, "⚠️ <b>আপনার এক্সেস বাতিল করা হয়েছে।</b>")
 
 # --- Admin: Exam Schedule Setup (Step-by-step) ---
@@ -393,16 +489,21 @@ def exam_step_finalize(message):
             subject = temp['subject']
             exam_dt = datetime.datetime.strptime(f"{date_str} {time_str}", "%d-%m-%Y %I:%M %p")
             
-            users_db[uid].update({'exam_sub': subject, 'exam_date': date_str, 'exam_time': time_str, 'exam_dt': exam_dt})
+            users_db[uid].update({
+                'exam_sub': subject, 
+                'exam_date': date_str, 
+                'exam_time': time_str, 
+                'exam_dt': exam_dt,
+                'reminder_sent': False
+            })
             bot.send_message(chat_id, "✅ শিডিউল সফলভাবে সেট করা হয়েছে!")
-            bot.send_message(uid, f"🔔 <b>New Exam Alert!</b>\nSubject: {subject}\nDate: {date_str} at {time_str}")
-        except:
-            bot.send_message(chat_id, "❌ ফর্মেট বা তারিখ ভুল হয়েছে।")
+            bot.send_message(uid, f"🔔 <b>New Exam Schedule!</b>\nSubject: {subject}\nDate: {date_str} at {time_str}")
+        except Exception as e:
+            bot.send_message(chat_id, f"❌ ফর্মেট বা তারিখ ভুল হয়েছে: {e}")
 
 # --- Admin: Status Update ---
 @bot.callback_query_handler(func=lambda c: c.data == 'adm_status' or c.data.startswith('admstat_set_'))
 def admin_status_menu(call):
-    # Handle direct request from alert
     pre_selected_uid = None
     if call.data.startswith('admstat_set_'):
         pre_selected_uid = int(call.data.split('_')[2])
@@ -421,25 +522,25 @@ def admin_status_menu(call):
 @bot.callback_query_handler(func=lambda c: c.data in ['admst_res', 'admst_upd'])
 def admin_status_select_user(call):
     action = call.data
-    # If user was not pre-selected from an alert, ask to select user
     if not admin_temp.get(call.message.chat.id, {}).get('target_uid'):
         mk = types.InlineKeyboardMarkup(row_width=1)
         for uid, data in users_db.items():
             if data.get('is_approved'):
-                mk.add(types.InlineKeyboardButton(f"{data['name']} (Roll: {data['roll']})", callback_data=f"{action}_{uid}"))
-        bot.edit_message_text("ব্যবহারকারী নির্বাচন করুন:", call.message.chat.id, call.message.message_id, reply_markup=mk)
+                mk.add(types.InlineKeyboardButton(f"{data['name']} (Roll: {data['roll']})", callback_data=f"{action}_user_{uid}"))
+        try:
+            bot.edit_message_text("ব্যবহারকারী নির্বাচন করুন:", call.message.chat.id, call.message.message_id, reply_markup=mk)
+        except:
+            pass
     else:
-        # User already in temp (from alert flow)
         uid = admin_temp[call.message.chat.id]['target_uid']
-        # Route manually
         if action == 'admst_res':
              ask_result_sub(call.message, uid)
         else:
              show_status_options(call.message, uid)
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith('admst_res_'))
-def handle_admst_res(call):
-    uid = int(call.data.split('_')[2])
+@bot.callback_query_handler(func=lambda c: c.data.startswith('admst_res_user_'))
+def handle_admst_res_user(call):
+    uid = int(call.data.split('_')[3])
     ask_result_sub(call.message, uid)
 
 def ask_result_sub(message, uid):
@@ -464,10 +565,11 @@ def save_result(message):
             users_db[uid]['exam_results'] = {}
         users_db[uid]['exam_results'][sub] = marks
         bot.send_message(chat_id, "✅ ফলাফল সফলভাবে সেভ হয়েছে!")
+        bot.send_message(uid, f"🎓 <b>নতুন পরীক্ষার ফলাফল প্রকাশ হয়েছে!</b>\n📖 সাবজেক্ট: {sub}\n💯 নম্বর: {marks}")
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith('admst_upd_'))
-def handle_admst_upd(call):
-    uid = int(call.data.split('_')[2])
+@bot.callback_query_handler(func=lambda c: c.data.startswith('admst_upd_user_'))
+def handle_admst_upd_user(call):
+    uid = int(call.data.split('_')[3])
     show_status_options(call.message, uid)
 
 def show_status_options(message, uid):
@@ -495,19 +597,66 @@ def process_status_choice(call):
         bot.register_next_step_handler(msg, save_custom_status, uid)
     else:
         users_db[uid]['status_msg'] = status_val
-        bot.edit_message_text(f"✅ স্ট্যাটাস ({status_val}) সেট করা হয়েছে!", call.message.chat.id, call.message.message_id)
+        try:
+            bot.edit_message_text(f"✅ স্ট্যাটাস ({status_val}) সেট করা হয়েছে!", call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        bot.send_message(uid, f"🔄 <b>আপনার স্ট্যাটাস আপডেট হয়েছে:</b>\n\n( {status_val} )")
 
 def save_custom_status(message, uid):
     if uid in users_db:
         users_db[uid]['status_msg'] = message.text
         bot.send_message(message.chat.id, "✅ কাস্টম স্ট্যাটাস সেভ হয়েছে!")
+        bot.send_message(uid, f"🔄 <b>আপনার স্ট্যাটাস আপডেট হয়েছে:</b>\n\n( {message.text} )")
+
+# --- Admin: All User Notice (Congratulatory & General Notice with Image/Text) ---
+@bot.callback_query_handler(func=lambda c: c.data == 'adm_notice')
+def admin_notice_menu(call):
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton("🥳 অভিনন্দন বার্তা (Congratulatory)", callback_data="notif_congrats"),
+        types.InlineKeyboardButton("📢 সাধারণ নোটিশ বার্তা (General Notice)", callback_data="notif_general")
+    )
+    bot.send_message(call.message.chat.id, "কোন ধরনের নোটিশ পাঠাতে চান?", reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data in ['notif_congrats', 'notif_general'])
+def admin_notice_type_select(call):
+    ntype = "अभिनন্দন বার্তা (Congratulatory)" if call.data == 'notif_congrats' else "সাধারণ নোটিশ (General Notice)"
+    admin_temp[call.message.chat.id] = {'notice_type': ntype}
+    msg = bot.send_message(call.message.chat.id, f"📝 <b>{ntype} এর মেসেজ ও ছবি (যদি থাকে) দিন:</b>\n(প্রথমে ছবি পাঠাতে পারেন অথবা শুধু টেক্সট পাঠাতে পারেন)")
+    bot.register_next_step_handler(msg, broadcast_notice_step)
+
+def broadcast_notice_step(message):
+    chat_id = message.chat.id
+    ntype = admin_temp.get(chat_id, {}).get('notice_type', 'Notice')
+    
+    success_count = 0
+    for uid, data in users_db.items():
+        if data.get('is_approved'):
+            try:
+                if message.photo:
+                    caption = f"🚨 <b>{ntype}</b>\n\n{message.caption or ''}"
+                    bot.send_photo(uid, message.photo[-1].file_id, caption=caption)
+                else:
+                    text_content = f"🚨 <b>{ntype}</b>\n\n{message.text}"
+                    bot.send_message(uid, text_content)
+                success_count += 1
+            except:
+                pass
+                
+    bot.send_message(chat_id, f"✅ নোটিশ সফলভাবে পাঠানো হয়েছে! মোট প্রেরিত ইউজার: {success_count}")
 
 # ==========================================
-# 9. RUN BOT
+# 10. RUN BOT & THREADING
 # ==========================================
 if __name__ == "__main__":
     t1 = threading.Thread(target=run_web_server)
     t1.daemon = True
     t1.start()
-    print("🚀 Bot Server Started Successfully...")
+    
+    t2 = threading.Thread(target=exam_reminder_checker)
+    t2.daemon = True
+    t2.start()
+    
+    print("🚀 Bot Server and Reminder Thread Started Successfully...")
     bot.infinity_polling()
