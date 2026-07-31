@@ -35,6 +35,8 @@ lang_dict = {
         'menu_exam': '📅 Exam Schedule',
         'menu_contact': '📞 Contact Details',
         'menu_admin': '🛠️ Admin Panel',
+        'menu_status': '📊 Status',  # <--- এটি যোগ করুন
+        # ... বাকিগুলো আগের মতই থাকবে
         'not_approved': (
             '❌ আপনার একাউন্ট এখনও অ্যাপ্রুভ হয়নি। দয়া করে অপেক্ষা'
             ' করুন।'
@@ -78,6 +80,8 @@ lang_dict = {
         'menu_exam': '📅 Exam Schedule',
         'menu_contact': '📞 Contact Details',
         'menu_admin': '🛠️ Admin Panel',
+        'menu_status': '📊 Status',  # <--- এটি যোগ করুন
+        # ... বাকিগুলো আগের মতই থাকবে
         'not_approved': '❌ Your account is not approved yet. Please wait.',
         'ask_name': 'Please enter your full name:',
         'ask_wa': 'Please enter your WhatsApp number:',
@@ -200,6 +204,7 @@ def show_main_menu(chat_id):
   if u_data.get('is_approved'):
     markup.add(t_dict['menu_docs'], t_dict['menu_embassy'])
     markup.add(t_dict['menu_exam'], t_dict['menu_contact'])
+    markup.add(t_dict['menu_status']) # <--- এটি নতুন যোগ করা হলো
 
   # Visible only to admins
   try:
@@ -735,130 +740,156 @@ def admin_panel(message):
     return
   mk = types.InlineKeyboardMarkup(row_width=1)
   mk.add(
-      types.InlineKeyboardButton(
-          '👥 User Details', callback_data='adm_users'
-      ),
-      types.InlineKeyboardButton(
-          '📅 Exam Schedule Set', callback_data='adm_exam'
-      ),
-      types.InlineKeyboardButton(
-          '📢 All User Notice', callback_data='adm_notice'
-      ),
+      types.InlineKeyboardButton('👥 User Details', callback_data='adm_users'),
+      types.InlineKeyboardButton('📅 Exam Schedule Set', callback_data='adm_exam'),
+      types.InlineKeyboardButton('🔄 Status Update', callback_data='adm_stat_up'), 
+      types.InlineKeyboardButton('📢 All User Notice', callback_data='adm_notice'),
   )
   bot.send_message(
       message.chat.id, '🛠️ *Admin Panel*', parse_mode='Markdown', reply_markup=mk
   )
 
-
-@bot.callback_query_handler(func=lambda c: c.data.startswith('adm_'))
+@bot.callback_query_handler(func=lambda c: c.data in ['adm_users', 'adm_exam', 'adm_stat_up', 'adm_notice'])
 def admin_panel_actions(call):
   chat_id = call.message.chat.id
 
-  # 1. User Details
+  # 1. User Details (With Remove Option) - এখানে elif এর বদলে if হবে
   if call.data == 'adm_users':
-    if not users_db:
-      bot.answer_callback_query(
-          call.id, 'কোনো ইউজার ডাটা নেই!', show_alert=True
-      )
-      return
-
-    user_list = '👥 *Approved Users List:*\n\n'
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    has_u = False
     for uid, data in users_db.items():
       if data.get('is_approved'):
-        user_list += (
-            f"Roll: `{data.get('roll')}` | Name: {data.get('name', 'Unknown')}\n"
+        roll = data.get('roll', 'N/A')
+        name = data.get('name', 'Unknown')
+        # বাটনে ক্লিক করলেই পারমিশন রিমুভ করার অপশন আসবে
+        mk.add(
+            types.InlineKeyboardButton(
+                f'❌ Remove: Roll {roll} ({name})',
+                callback_data=f'rmappr_{uid}',
+            )
         )
+        has_u = True
 
-    bot.send_message(chat_id, user_list, parse_mode='Markdown')
-    bot.answer_callback_query(call.id)
+    if has_u:
+      bot.send_message(
+          chat_id,
+          '👥 *Approved Users List:*\nযেকোনো ইউজারের Approved পারমিশন সরাতে তার'
+          ' নামের ওপর ক্লিক করুন:',
+          parse_mode='Markdown',
+          reply_markup=mk,
+      )
+    else:
+      bot.answer_callback_query(
+          call.id, 'কোনো অ্যাপ্রুভড ইউজার নেই!', show_alert=True
+      )
 
-  # 2. Exam Schedule Set
+  # 2. Exam Schedule Set (New Logic: List users)
   elif call.data == 'adm_exam':
-    msg = bot.send_message(
-        chat_id,
-        '📅 পরীক্ষার শিডিউল সেট করতে নিচের ফরমেটে মেসেজ'
-        ' দিন:\n\n`রোল, সাবজেক্ট, তারিখ (DD-MM-YYYY), সময় (HH:MM'
-        ' AM/PM)`\n\nউদাহরণ: `10001, Math, 25-12-2026, 10:00 AM`',
-        parse_mode='Markdown',
-    )
-    bot.register_next_step_handler(msg, process_exam_setup)
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    has_u = False
+    for uid, data in users_db.items():
+      if data.get('is_approved'):
+        mk.add(types.InlineKeyboardButton(f"Roll: {data.get('roll')} - {data.get('name')}", callback_data=f"exset_{uid}"))
+        has_u = True
+    if has_u:
+      bot.send_message(chat_id, "📅 কার পরীক্ষার শিডিউল সেট করবেন নির্বাচন করুন:", reply_markup=mk)
+    else:
+      bot.answer_callback_query(call.id, 'কোনো অ্যাপ্রুভড ইউজার নেই!', show_alert=True)
 
-  # 3. All User Notice
+  # 3. Status Update Menu (New Feature)
+  elif call.data == 'adm_stat_up':
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton('📝 Exam Result', callback_data='adm_res_set'),
+        types.InlineKeyboardButton('📋 Status', callback_data='adm_st_set')
+    )
+    bot.send_message(chat_id, "কোনটি আপডেট করতে চান নির্বাচন করুন:", reply_markup=mk)
+
+  # 4. All User Notice
   elif call.data == 'adm_notice':
     mk = types.InlineKeyboardMarkup()
     mk.add(
-        types.InlineKeyboardButton(
-            '🥳 অভিনন্দন বার্তা', callback_data='notice_congrats'
-        ),
-        types.InlineKeyboardButton(
-            '📢 সাধারণ নোটিশ', callback_data='notice_general'
-        ),
+        types.InlineKeyboardButton('🥳 অভিনন্দন বার্তা', callback_data='notice_congrats'),
+        types.InlineKeyboardButton('📢 সাধারণ নোটিশ', callback_data='notice_general'),
     )
-    bot.send_message(
-        chat_id, 'কোন ধরনের নোটিশ পাঠাতে চান?', reply_markup=mk
+    bot.send_message(chat_id, 'কোন ধরনের নোটিশ পাঠাতে চান?', reply_markup=mk)
+
+# === Remove Approved Permission Handler (নতুন যোগ করা হলো) ===
+@bot.callback_query_handler(func=lambda c: c.data.startswith('rmappr_'))
+def remove_user_approval(call):
+  uid = int(call.data.split('_')[1])
+
+  if uid in users_db:
+    users_db[uid]['is_approved'] = False
+    roll = users_db[uid].get('roll', 'N/A')
+    name = users_db[uid].get('name', 'User')
+
+    # এডমিনকে কনফার্মেশন মেসেজ দেখানো
+    bot.answer_callback_query(
+        call.id, f'✅ Roll: {roll} এর পারমিশন সরানো হয়েছে!', show_alert=True
     )
+    bot.edit_message_text(
+        f'🚫 *Roll: {roll} ({name})* এর Approved পারমিশন সফলভাবে রিমুভ করা হয়েছে।',
+        call.message.chat.id,
+        call.message.message_id,
+        parse_mode='Markdown',
+    )
+    # ইউজারের পারমিশন বাতিল হওয়ায় তাকে জানানো
+    try:
+      bot.send_message(
+          uid, '⚠️ আপনার অ্যাকাউন্ট থেকে সার্ভিস ব্যবহারের পারমিশন বাতিল করা হয়েছে।'
+      )
+      show_main_menu(uid)
+    except Exception:
+      pass
 
+# === Exam Schedule Step-by-Step System ===
+@bot.callback_query_handler(func=lambda c: c.data.startswith('exset_'))
+def exset_subject(call):
+  uid = int(call.data.split('_')[1])
+  temp_data[call.message.chat.id] = {'target_uid': uid}
+  msg = bot.send_message(call.message.chat.id, f"{users_db[uid]['name']} এর পরীক্ষার সাবজেক্ট লিখুন:")
+  bot.register_next_step_handler(msg, exset_date)
 
-def process_exam_setup(message):
+def exset_date(message):
+  cid = message.chat.id
+  temp_data[cid]['sub'] = message.text
+  msg = bot.send_message(cid, "পরীক্ষার তারিখ দিন (DD-MM-YYYY):")
+  bot.register_next_step_handler(msg, exset_time)
+
+def exset_time(message):
+  cid = message.chat.id
+  temp_data[cid]['date'] = message.text
+  msg = bot.send_message(cid, "পরীক্ষার সময় দিন (HH:MM AM/PM):")
+  bot.register_next_step_handler(msg, exset_finish)
+
+def exset_finish(message):
+  cid = message.chat.id
+  uid = temp_data[cid]['target_uid']
+  sub = temp_data[cid]['sub']
+  date_str = temp_data[cid]['date']
+  time_str = message.text
+
   try:
-    parts = [p.strip() for p in message.text.split(',')]
-    roll = int(parts[0])
-    subject = parts[1]
-    date_str = parts[2]
-    time_str = parts[3]
+    import datetime
+    exam_datetime = datetime.datetime.strptime(f'{date_str} {time_str}', '%d-%m-%Y %I:%M %p')
+    users_db[uid]['exam_sub'] = sub
+    users_db[uid]['exam_date'] = date_str
+    users_db[uid]['exam_time'] = time_str
+    users_db[uid]['exam_dt'] = exam_datetime
 
-    exam_datetime = datetime.datetime.strptime(
-        f'{date_str} {time_str}', '%d-%m-%Y %I:%M %p'
-    )
-
-    updated = False
-    for uid, data in users_db.items():
-      if data.get('roll') == roll:
-        users_db[uid]['exam_sub'] = subject
-        users_db[uid]['exam_date'] = date_str
-        users_db[uid]['exam_time'] = time_str
-        users_db[uid]['exam_dt'] = exam_datetime
-        updated = True
-
-        lang = users_db[uid].get('lang', 'bn')
-        bot.send_message(
-            uid,
-            f'🔔 *New Exam Schedule Added!*\n\n{subject} exam on {date_str} at'
-            f' {time_str}',
-            parse_mode='Markdown',
-        )
-        break
-
-    if updated:
-      bot.send_message(
-          message.chat.id, '✅ এক্সাম শিডিউল সফলভাবে সেট করা হয়েছে!'
-      )
-    else:
-      bot.send_message(
-          message.chat.id, '❌ এই রোল নম্বরের কাউকে পাওয়া যায়নি।'
-      )
-
+    bot.send_message(cid, f"✅ {users_db[uid]['name']} এর এক্সাম শিডিউল সফলভাবে সেট করা হয়েছে!")
+    bot.send_message(uid, f'🔔 *New Exam Schedule Added!*\n\n{sub} exam on {date_str} at {time_str}', parse_mode='Markdown')
   except Exception:
-    bot.send_message(
-        message.chat.id,
-        '❌ ফরমেট ভুল হয়েছে। দয়া করে আবার চেষ্টা করুন।',
-    )
+    bot.send_message(cid, '❌ তারিখ বা সময়ের ফরমেট ভুল হয়েছে।')
 
-
+# === Notice System ===
 @bot.callback_query_handler(func=lambda c: c.data.startswith('notice_'))
 def ask_notice_text(call):
   chat_id = call.message.chat.id
-  n_type = (
-      '🥳 *অভিনন্দন!*\n\n'
-      if call.data == 'notice_congrats'
-      else '📢 *জরুরী নোটিশ!*\n\n'
-  )
-
-  msg = bot.send_message(
-      chat_id, 'নোটিশের লেখাটি (Text) বা ছবিসহ ক্যাপশন পাঠিয়ে দিন:'
-  )
+  n_type = '🥳 *অভিনন্দন!*\n\n' if call.data == 'notice_congrats' else '📢 *জরুরী নোটিশ!*\n\n'
+  msg = bot.send_message(chat_id, 'নোটিশের লেখাটি (Text) বা ছবিসহ ক্যাপশন পাঠিয়ে দিন:')
   bot.register_next_step_handler(msg, send_notice_to_all, n_type)
-
 
 def send_notice_to_all(message, notice_type):
   success_count = 0
@@ -866,25 +897,149 @@ def send_notice_to_all(message, notice_type):
     if data.get('is_approved'):
       try:
         if message.content_type == 'text':
-          bot.send_message(
-              uid, f'{notice_type}{message.text}', parse_mode='Markdown'
-          )
+          bot.send_message(uid, f'{notice_type}{message.text}', parse_mode='Markdown')
         elif message.content_type == 'photo':
-          bot.send_photo(
-              uid,
-              message.photo[-1].file_id,
-              caption=f'{notice_type}{message.caption or ""}',
-              parse_mode='Markdown',
-          )
+          bot.send_photo(uid, message.photo[-1].file_id, caption=f'{notice_type}{message.caption or ""}', parse_mode='Markdown')
         success_count += 1
       except Exception:
         pass
+  bot.send_message(message.chat.id, f'✅ নোটিশটি সফলভাবে {success_count} জনের কাছে পাঠানো হয়েছে।')
 
-  bot.send_message(
-      message.chat.id,
-      f'✅ নোটিশটি সফলভাবে {success_count} জন ইউজারের কাছে পাঠানো'
-      ' হয়েছে।',
-  )
+# ==========================================
+# 10. STATUS & EXAM RESULTS SYSTEM
+# ==========================================
+
+# --- Admin Setup Handlers ---
+@bot.callback_query_handler(func=lambda c: c.data in ['adm_res_set', 'adm_st_set'])
+def admin_res_stat_select(call):
+    cb = "rset_" if call.data == 'adm_res_set' else "stset_"
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    has_u = False
+    for uid, data in users_db.items():
+        if data.get('is_approved'):
+            mk.add(types.InlineKeyboardButton(f"Roll: {data.get('roll')} - {data.get('name')}", callback_data=f"{cb}{uid}"))
+            has_u = True
+    txt = "📝 ফলাফল সেট করতে ইউজার নির্বাচন করুন:" if call.data == 'adm_res_set' else "📋 স্ট্যাটাস সেট করতে ইউজার নির্বাচন করুন:"
+    if has_u:
+        bot.send_message(call.message.chat.id, txt, reply_markup=mk)
+
+# Result Setup Flow
+@bot.callback_query_handler(func=lambda c: c.data.startswith('rset_'))
+def rset_ask_sub(call):
+    uid = int(call.data.split('_')[1])
+    temp_data[call.message.chat.id] = {'target_uid': uid}
+    msg = bot.send_message(call.message.chat.id, f"{users_db[uid]['name']} এর কোন সাবজেক্টের ফলাফল সেট করবেন?")
+    bot.register_next_step_handler(msg, rset_ask_mark)
+
+def rset_ask_mark(message):
+    cid = message.chat.id
+    temp_data[cid]['sub'] = message.text
+    msg = bot.send_message(cid, f"{temp_data[cid]['sub']} সাবজেক্টের প্রাপ্ত নম্বর (Marks) দিন:")
+    bot.register_next_step_handler(msg, rset_finish)
+
+def rset_finish(message):
+    cid = message.chat.id
+    uid = temp_data[cid]['target_uid']
+    sub = temp_data[cid]['sub']
+    marks = message.text
+
+    if 'results' not in users_db[uid]:
+        users_db[uid]['results'] = {}
+    users_db[uid]['results'][sub] = marks
+
+    bot.send_message(cid, f"✅ {users_db[uid]['name']} এর {sub} এ {marks} নাম্বার সেট করা হয়েছে।")
+
+# Status Setup Flow
+@bot.callback_query_handler(func=lambda c: c.data.startswith('stset_'))
+def stset_ask(call):
+    uid = int(call.data.split('_')[1])
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    opts = ['In work', 'Paused', 'Activities are ongoing', 'There are no updates']
+    for opt in opts:
+        mk.add(types.InlineKeyboardButton(opt, callback_data=f"stval_{uid}_{opt}"))
+    mk.add(types.InlineKeyboardButton('✍️ Custom Status (নিজে লিখুন)', callback_data=f"stcustom_{uid}"))
+    
+    bot.send_message(call.message.chat.id, f"{users_db[uid]['name']} এর স্ট্যাটাস নির্বাচন করুন:", reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('stval_'))
+def stval_save(call):
+    parts = call.data.split('_', 2)
+    uid = int(parts[1])
+    val = parts[2]
+    users_db[uid]['status_msg'] = val
+    bot.edit_message_text(f"✅ স্ট্যাটাস সেট করা হয়েছে: {val}", call.message.chat.id, call.message.message_id)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('stcustom_'))
+def stcustom_ask(call):
+    uid = int(call.data.split('_')[1])
+    temp_data[call.message.chat.id] = {'target_uid': uid}
+    msg = bot.send_message(call.message.chat.id, "নতুন কাস্টম স্ট্যাটাসটি লিখে পাঠান:")
+    bot.register_next_step_handler(msg, stcustom_save)
+
+def stcustom_save(message):
+    cid = message.chat.id
+    uid = temp_data[cid]['target_uid']
+    users_db[uid]['status_msg'] = message.text
+    bot.send_message(cid, "✅ কাস্টম স্ট্যাটাস সফলভাবে সেট করা হয়েছে।")
+
+# --- User Side Status Menu ---
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn'].get('menu_status', '📊 Status'), lang_dict['en'].get('menu_status', '📊 Status')])
+def user_status_btn(message):
+    msg = bot.send_message(message.chat.id, "আপনার স্ট্যাটাস জানতে আপনার রোল নাম্বারটি লিখে পাঠান:")
+    bot.register_next_step_handler(msg, process_user_roll)
+
+def process_user_roll(message):
+    roll_input = message.text.strip()
+    target_uid = None
+    
+    for uid, data in users_db.items():
+        if str(data.get('roll')) == roll_input:
+            target_uid = uid
+            break
+            
+    if not target_uid:
+        bot.send_message(message.chat.id, "❌ এই রোল নাম্বারের কোনো ডাটা পাওয়া যায়নি। সঠিক রোল নাম্বার দিন।")
+        return
+
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton('📝 পরীক্ষার ফলাফল', callback_data=f'chkres_{target_uid}'),
+        types.InlineKeyboardButton('🔄 সর্বশেষ আপডেট', callback_data=f'chkstat_{target_uid}')
+    )
+    bot.send_message(message.chat.id, f"✅ রোল: {roll_input} পাওয়া গেছে। আপনি কী দেখতে চান?", reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('chkres_'))
+def view_exam_results(call):
+    uid = int(call.data.split('_')[1])
+    results = users_db[uid].get('results', {})
+    
+    if not results:
+        bot.answer_callback_query(call.id, "এখনো কোনো পরীক্ষার ফলাফল প্রকাশ করা হয়নি।", show_alert=True)
+        return
+        
+    res_text = "📝 *আপনার পরীক্ষার ফলাফল:*\n\n"
+    for sub, mark in results.items():
+        res_text += f"▪️ {sub}: {mark}\n"
+        
+    bot.edit_message_text(res_text, call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('chkstat_'))
+def view_user_status(call):
+    uid = int(call.data.split('_')[1])
+    st = users_db[uid].get('status_msg')
+    roll = users_db[uid].get('roll')
+    
+    if not st:
+        bot.answer_callback_query(call.id, "আপডেট নেই! এডমিনকে রিকোয়েস্ট পাঠানো হচ্ছে...", show_alert=True)
+        # Send request to Admin group
+        mk = types.InlineKeyboardMarkup()
+        mk.add(types.InlineKeyboardButton('Update Status', callback_data=f"stset_{uid}"))
+        bot.send_message(BACKUP_GROUP_ID, f"🔔 User Roll: {roll} wants to know their status but it's not set!", reply_markup=mk)
+    else:
+        if st == 'There are no updates':
+            bot.edit_message_text(f"আপনার বর্তমান স্ট্যাটাস: ({st})", call.message.chat.id, call.message.message_id)
+        else:
+            bot.edit_message_text(f"আপনার বর্তমান স্ট্যাটাস: {st}", call.message.chat.id, call.message.message_id)
 
 
 # ==========================================
