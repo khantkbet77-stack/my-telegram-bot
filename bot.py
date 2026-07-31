@@ -603,139 +603,85 @@ def doc_details(call):
     in [lang_dict['bn']['menu_embassy'], lang_dict['en']['menu_embassy']]
 )
 def show_embassy(message):
-  mk = types.InlineKeyboardMarkup(row_width=1)
-  mk.add(
-      types.InlineKeyboardButton('Q: Why you are here?', callback_data='qa_1'),
-      types.InlineKeyboardButton(
-          'Q: What is your name?', callback_data='qa_2'
-      ),
-      types.InlineKeyboardButton(
-          'Q: What is your passport number?', callback_data='qa_3'
-      ),
-      types.InlineKeyboardButton(
-          'Q: your date of birth?', callback_data='qa_4'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Introduce yourself/about yourself?', callback_data='qa_5'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Why Russia? Why not Other Countries?', callback_data='qa_6'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Why this University? Why not your present University? Why not India?', callback_data='qa_7'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Do you have any relatives in Russia?', callback_data='qa_8'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Do you have any friends in Russia?', callback_data='qa_9'
-      ),
-      types.InlineKeyboardButton(
-          'Q: What will you do in your vacations in Russia?', callback_data='qa_10'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Who is your sponsor (tell excetly written on avedefit)?', callback_data='qa_11'
-      ),
-      types.InlineKeyboardButton(
-          'Q: How do you know this University?', callback_data='qa_12'
-      ),
-      types.InlineKeyboardButton(
-          'Q: What is your University name?', callback_data='qa_13'
-      ),
-      types.InlineKeyboardButton(
-          'Q: About your University?', callback_data='qa_14'
-      ),
-      types.InlineKeyboardButton(
-          'Q: About your subject?', callback_data='qa_15'
-      ),
-      types.InlineKeyboardButton(
-          'Q: Tell me about your scholorship journy
-,Tell me some qustion come in your exam.
-,Tell me something about your subject.
-,Definition of your subject.', callback_data='qa_16'
-      ),
-  )
-  bot.send_message(
-      message.chat.id,
-      '🏛️ *Embassy Interview Q&A*',
-      parse_mode='Markdown',
-      reply_markup=mk,
-  )
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton('Q: Why you are here?', callback_data='qa_1'),
+        types.InlineKeyboardButton('Q: What is your name?', callback_data='qa_2'),
+        types.InlineKeyboardButton('Q: What is your passport number?', callback_data='qa_3'),
+        types.InlineKeyboardButton('Q: your date of birth?', callback_data='qa_4'),
+        types.InlineKeyboardButton('Q: Introduce yourself/about yourself?', callback_data='qa_5'),
+        types.InlineKeyboardButton('Q: Why Russia? Why not Other Countries?', callback_data='qa_6'),
+        types.InlineKeyboardButton('Q: Why this University? Why not your present University? Why not India?', callback_data='qa_7'),
+        types.InlineKeyboardButton('Q: Do you have any relatives in Russia?', callback_data='qa_8'),
+        types.InlineKeyboardButton('Q: Do you have any friends in Russia?', callback_data='qa_9'),
+        types.InlineKeyboardButton('Q: What will you do in your vacations in Russia?', callback_data='qa_10'),
+        types.InlineKeyboardButton('Q: Who is your sponsor (tell excetly written on avedefit)?', callback_data='qa_11'),
+        types.InlineKeyboardButton('Q: How do you know this University?', callback_data='qa_12'),
+        types.InlineKeyboardButton('Q: What is your University name?', callback_data='qa_13'),
+        types.InlineKeyboardButton('Q: About your University?', callback_data='qa_14'),
+        types.InlineKeyboardButton('Q: About your subject?', callback_data='qa_15'),
+        types.InlineKeyboardButton('Q: Tell me about your scholarship journey...', callback_data='qa_16'),
+    )
+    bot.send_message(
+        message.chat.id,
+        '🏛️ *Embassy Interview Q&A*',
+        parse_mode='Markdown',
+        reply_markup=mk,
+    )
 
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('qa_'))
 def qa_details(call):
-  if call.data == 'qa_1':
-    ans = (
-        'A: I am here to face my interview.'
-    )
-  elif call.data == 'qa_2':
-    ans = (
-        'A: My name is Md ** Amin.'
-    )
-  else call.data == 'qa_3':
-    ans = 'A: A1104***93, Sir.'
-    )
-  elif call.data == 'qa_4':
-    ans = (
-        'A: Second January 20**..'
-    )
-  elif call.data == 'qa_5':
-    ans = (
-        'A: Thank you sir. My name is Mohammad Amin khan. I born in Chandpur and live in Dhaka for the purpose of study. I have completed my secondary education in 2019 with GPA 3.90 and later in 2021 i have completed my higher secondary education with GPA 4.83. Now I'm studying in Bangabondhu Sheikh Mujibur Rahman Science and Technology University. I'm an energetic and quick  learner person. I have several skills like web development, computer skill , internet browsing and so on. My favorite hobbies are playing outdoor game, watching movies and solving difficult task. I want to be a business man. That's all about myself..'
-    )
-  elif call.data == 'qa_6':
-    ans = (
-        'A: Thank you sir for asking me this question. Russia provides best quality education. Russian degree is accepted all over the world and educational and living cost is affordable for me. That's why I have chosen Russia..'
-    )
-  elif call.data == 'qa_7':
-    ans = (
-        'A: Why this University? 
-Thank you sir for asking me this question. This University is one of the oldest Universities in Russia. Course they offer me matches with my previous study and Tuition fee is affordable for my parents.
+    if call.data == 'qa_1':
+        ans = 'A: I am here to face my interview.'
+    elif call.data == 'qa_2':
+        ans = 'A: My name is Md Amin.'
+    elif call.data == 'qa_3':
+        ans = 'A: A1104***93, Sir.'
+    elif call.data == 'qa_4':
+        ans = 'A: Second January 20**..'
+    elif call.data == 'qa_5':
+        ans = ('A: Thank you sir. My name is Mohammad Amin khan. I born in Chandpur and live in Dhaka for the purpose of study. '
+               'I have completed my secondary education in 2019 with GPA 3.90 and later in 2021 i have completed my higher secondary education with GPA 4.83. '
+               "Now I'm studying in Bangabondhu Sheikh Mujibur Rahman Science and Technology University. I'm an energetic and quick learner person. "
+               'I have several skills like web development, computer skill, internet browsing and so on. My favorite hobbies are playing outdoor game, '
+               'watching movies and solving difficult task. I want to be a business man. That\'s all about myself..')
+    elif call.data == 'qa_6':
+        ans = ('A: Thank you sir for asking me this question. Russia provides best quality education. Russian degree is accepted all over the world '
+               'and educational and living cost is affordable for me. That\'s why I have chosen Russia..')
+    elif call.data == 'qa_7':
+        ans = ('A: Why this University?\nThank you sir for asking me this question. This University is one of the oldest Universities in Russia. '
+               'Course they offer me matches with my previous study and Tuition fee is affordable for my parents.\n\n'
+               'Why not your present University?\nActually Sir, I have a dream to study in Abroad. To be honest I am not satisfied in my present University.\n\n'
+               'Why not india?\nTo be honest i think there is no difference between Bangladesh and Indian education system, life style and culture.')
+    elif call.data == 'qa_8':
+        ans = 'A: No sir.'
+    elif call.data == 'qa_9':
+        ans = 'A: Yes sir, i have some Facebook friends in this University.'
+    elif call.data == 'qa_10':
+        ans = 'A: I will visit other state in Russia to see the beautiful place of Russia.'
+    elif call.data == 'qa_11':
+        ans = ('A: Thank you sir. My father is my sponsor. He is a businessman. He has Restaurant business, Super Shop business and Transport business. '
+               'His yearly income from businesses, House rent Transport business, and agricultural land around 60 Lac BDT.')
+    elif call.data == 'qa_12':
+        ans = 'A: I come to know this University from their University website and some of my Facebook friends are studying in this University also.'
+    elif call.data == 'qa_13':
+    ...
+        ans = 'A: Thank you sir. My University name is Kursk State University.'
+    elif call.data == 'qa_14':
+        ans = ('A: Kursk State University is Kursk\'s oldest higher educational institution, founded in 1934 as Kursk State Pedagogical Institute, '
+               'later in 1994 transformed into Kursk State Pedagogical University and has a current status since 2003. '
+               'Kursk State University is a scientific, educational and cultural center of the region. The University offers a wide range of specialties, '
+               'modern educational technologies, and various forms of professional training.')
+    elif call.data == 'qa_15':
+        ans = ('A: My major is Marketing.\nMarketing is a process by which companies create value for customers and build strong customer '
+               'relationships to capture value from customers in return.\nMarketing is the act of satisfying and retaining customers.')
+    elif call.data == 'qa_16':
+        ans = 'A: Here is your scholarship journey and subject details based on your preparation.'
+    else:
+        ans = 'A: Information not available.'
 
-Why not your present University? 
-Actually Sir, I have a dream to study in Abroad.  To be honest I am not satisfied in my present University.
-
-Why not india?
-
-To be honest i think there is no difference between Bangladesh and Indian education system, life style and culture.
-.'
-    )
-  elif call.data == 'qa_8':
-    ans = (
-        'A: No sir.'
-    )
-  elif call.data == 'qa_9':
-    ans = (
-        'A: Yes sir, i have some Facebook friends in this University.'
-    )
-  elif call.data == 'qa_10':
-    ans = (
-        'A: I will visit other state in Russia to see the beautiful place of Russia.'
-    )
-  elif call.data == 'qa_11':
-    ans = (
-        'A: Thank you sir. My father is my sponsor. He is a businessman. He has Restaurant business, Super Shop business and Transport business. His yearly income from businesses, House rent Transport business, and agricultural land around 60 Lac BDT.'
-    )
-  elif call.data == 'qa_12':
-    ans = (
-        'A: I come to know this University from their University website and some of my Facebook friends are studying in this University also.'
-    )
-  elif call.data == 'qa_13':
-    ans = (
-        'A: Thank you sir. My University name is Kursk State University.'
-    )
-  elif call.data == 'qa_14':
-    ans = (
-        'A: Kursk State University is Kursk's oldest higher educational institution, founded in 1934 as Kursk State Pedagogical Institute, later in 1994 transformed into Kursk State Pedagogical University and has a current status since 2003.Kursk State University is a scientific, educational and cultural center of the region. The University offers a wide range of specialties, modern educational technologies, and various forms of professional training.'
-    )
-  elif call.data == 'qa_15':
-    ans = (
-        'A: my major is Marketing.
-Marketing is a process by which companies create value for customers and build strong customer relationships to capture value from customers in return.
-Marketing is the act of satisfying and retaining customers.'
-  bot.answer_callback_query(call.id, ans, show_alert=True)
-
+    bot.answer_callback_query(call.id, ans, show_alert=True)
 
 # ==========================================
 # 8. ADMIN PANEL & NOTICES
