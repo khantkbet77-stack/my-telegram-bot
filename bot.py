@@ -361,7 +361,10 @@ def start_live_chat(message):
   mk.add(lang_dict[lang]['chat_close_btn'])
 
   bot.send_message(chat_id, lang_dict[lang]['chat_init'], reply_markup=mk)
+  
+  # চ্যাট এবং এলার্ট স্ট্যাটাস সেট করা
   users_db[chat_id]['in_chat'] = True
+  users_db[chat_id]['alert_sent'] = False
 
 
 @bot.message_handler(
@@ -373,7 +376,6 @@ def user_close_chat(message):
   roll = users_db.get(chat_id, {}).get('roll', 'Unknown')
   lang = users_db.get(chat_id, {}).get('lang', 'bn')
   
-  # চ্যাট এখনই Close করা হচ্ছে না
   wait_msg = (
       "Your request to close the chat has been sent. Please wait for the admin."
       if lang == 'en'
@@ -400,17 +402,19 @@ def admin_confirm_close(call):
   uid = int(call.data.split('_')[1])
   lang = users_db.get(uid, {}).get('lang', 'bn')
   
-  # ইউজারের ডাটাবেসে চ্যাট স্ট্যাটাস False করা
+  # চ্যাট স্ট্যাটাস রিসেট
   if uid in users_db:
       users_db[uid]['in_chat'] = False
+      users_db[uid]['alert_sent'] = False
       
-  # ইউজারকে চ্যাট শেষের মেসেজ পাঠানো
+  # ইউজারকে বিদায়ী বার্তা পাঠানো
   bot.send_message(uid, lang_dict[lang]['chat_closed_msg'])
+  
   bot.edit_message_text(
       '✅ Chat closed successfully.', call.message.chat.id, call.message.message_id
   )
   
-  # ইউজারের কাছে আবার মেইন মেনু ফিরিয়ে আনা
+  # ইউজারের কাছে মেইন মেনু নিয়ে আসা
   show_main_menu(uid)
 
 
@@ -427,45 +431,48 @@ def forward_to_admin(message):
 
   caption = f'💬 [Roll: {roll}] {name}\nID: `{chat_id}`'
 
-  mk = types.InlineKeyboardMarkup()
-  mk.add(
-      types.InlineKeyboardButton(
-          '🕒 Busy', callback_data=f'chatbusy_{chat_id}'
-      ),
-      types.InlineKeyboardButton(
-          '🟢 Join Now', callback_data=f'chatjoin_{chat_id}'
-      ),
-  )
-  # এডমিনের জন্য চ্যাট ক্লোজ বাটন যুক্ত করা হলো
-  mk.add(
-      types.InlineKeyboardButton(
-          '🛑 Close Chat', callback_data=f'closechat_{chat_id}'
-      )
-  )
+  # বাটন কি আগে পাঠানো হয়েছে কি না তা চেক করা
+  alert_already_sent = users_db.get(chat_id, {}).get('alert_sent', False)
 
-  if message.content_type == 'text':
-    bot.send_message(
-        BACKUP_GROUP_ID,
-        f'{caption}\n\n{message.text}',
-        message_thread_id=TOPIC_SUPPORT,
-        reply_markup=mk,
+  mk = None
+  # শুধুমাত্র প্রথম মেসেজেই Join / Busy বাটন যাবে
+  if not alert_already_sent:
+    mk = types.InlineKeyboardMarkup()
+    mk.add(
+        types.InlineKeyboardButton('🕒 Busy', callback_data=f'chatbusy_{chat_id}'),
+        types.InlineKeyboardButton('🟢 Join Now', callback_data=f'chatjoin_{chat_id}'),
     )
-  elif message.content_type == 'photo':
-    bot.send_photo(
-        BACKUP_GROUP_ID,
-        message.photo[-1].file_id,
-        caption=caption,
-        message_thread_id=TOPIC_SUPPORT,
-        reply_markup=mk,
+    mk.add(
+        types.InlineKeyboardButton('🛑 Close Chat', callback_data=f'closechat_{chat_id}')
     )
-  elif message.content_type == 'document':
-    bot.send_document(
-        BACKUP_GROUP_ID,
-        message.document.file_id,
-        caption=caption,
-        message_thread_id=TOPIC_SUPPORT,
-        reply_markup=mk,
-    )
+    users_db[chat_id]['alert_sent'] = True
+
+  try:
+    if message.content_type == 'text':
+      bot.send_message(
+          BACKUP_GROUP_ID,
+          f'{caption}\n\n{message.text}',
+          message_thread_id=TOPIC_SUPPORT,
+          reply_markup=mk,
+      )
+    elif message.content_type == 'photo':
+      bot.send_photo(
+          BACKUP_GROUP_ID,
+          message.photo[-1].file_id,
+          caption=f'{caption}\n\n' + (message.caption or ''),
+          message_thread_id=TOPIC_SUPPORT,
+          reply_markup=mk,
+      )
+    elif message.content_type == 'document':
+      bot.send_document(
+          BACKUP_GROUP_ID,
+          message.document.file_id,
+          caption=f'{caption}\n\n' + (message.caption or ''),
+          message_thread_id=TOPIC_SUPPORT,
+          reply_markup=mk,
+      )
+  except Exception as e:
+    print(f"❌ Error forwarding message: {e}")
 
 
 @bot.callback_query_handler(
@@ -498,16 +505,19 @@ def admin_chat_action(call):
     )
     bot.send_message(uid, txt)
 
-  # Busy বা Join Now বাটনের জায়গায় Close Chat বাটন রাখা হলো
+  # Join বা Busy তে ক্লিক করার পর শুধুমাত্র Close Chat বাটনটি একটিভ রাখা হলো
   mk_close = types.InlineKeyboardMarkup()
   mk_close.add(
       types.InlineKeyboardButton(
           '🛑 Close Chat', callback_data=f'closechat_{uid}'
       )
   )
-  bot.edit_message_reply_markup(
-      call.message.chat.id, call.message.message_id, reply_markup=mk_close
-  )
+  try:
+    bot.edit_message_reply_markup(
+        call.message.chat.id, call.message.message_id, reply_markup=mk_close
+    )
+  except Exception:
+    pass
 
 
 # Admin replies to User
