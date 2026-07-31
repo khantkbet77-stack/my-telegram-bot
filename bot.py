@@ -35,8 +35,7 @@ lang_dict = {
         'menu_exam': '📅 Exam Schedule',
         'menu_contact': '📞 Contact Details',
         'menu_admin': '🛠️ Admin Panel',
-        'menu_status': '📊 Status',  # <--- এটি যোগ করুন
-        # ... বাকিগুলো আগের মতই থাকবে
+        'menu_status': '📊 Status',
         'not_approved': (
             '❌ আপনার একাউন্ট এখনও অ্যাপ্রুভ হয়নি। দয়া করে অপেক্ষা'
             ' করুন।'
@@ -71,6 +70,17 @@ lang_dict = {
             '📚 *আপনার পরীক্ষার শিডিউল*\n\n📖 বিষয়: {sub}\n📅 তারিখ: {date}\n⏰'
             ' সময়: {time}'
         ),
+        'exam_schedule_title': '📅 *আপনার পরীক্ষার রুটিন ও সময়সূচি:*\n\n',
+        'no_exam_schedule': '📅 আপনার এখনো কোনো পরীক্ষার শিডিউল সেট করা হয়নি।',
+        'ask_roll_status': 'আপনার স্ট্যাটাস জানতে আপনার রোল নাম্বারটি লিখে পাঠান:',
+        'roll_not_found': '❌ এই রোল নাম্বারের কোনো ডাটা পাওয়া যায়নি। সঠিক রোল নাম্বার দিন।',
+        'no_result_yet': 'এখনো কোনো পরীক্ষার ফলাফল প্রকাশ করা হয়নি।',
+        'exam_result_title': '📝 *আপনার পরীক্ষার ফলাফল:*\n\n',
+        'status_not_set': 'আপডেট নেই! এডমিনকে রিকোয়েস্ট পাঠানো হচ্ছে...',
+        'current_status_msg': 'আপনার বর্তমান স্ট্যাটাস: {st}',
+        'status_prompt_title': '✅ রোল: {roll} পাওয়া গেছে। আপনি কী দেখতে চান?',
+        'btn_exam_res': '📝 পরীক্ষার ফলাফল',
+        'btn_latest_up': '🔄 সর্বশেষ আপডেট',
     },
     'en': {
         'menu_chat': '💬 Live Chat',
@@ -80,8 +90,7 @@ lang_dict = {
         'menu_exam': '📅 Exam Schedule',
         'menu_contact': '📞 Contact Details',
         'menu_admin': '🛠️ Admin Panel',
-        'menu_status': '📊 Status',  # <--- এটি যোগ করুন
-        # ... বাকিগুলো আগের মতই থাকবে
+        'menu_status': '📊 Status',
         'not_approved': '❌ Your account is not approved yet. Please wait.',
         'ask_name': 'Please enter your full name:',
         'ask_wa': 'Please enter your WhatsApp number:',
@@ -111,6 +120,17 @@ lang_dict = {
             '📚 *Your Exam Schedule*\n\n📖 Subject: {sub}\n📅 Date: {date}\n⏰'
             ' Time: {time}'
         ),
+        'exam_schedule_title': '📅 *Your Exam Schedule & Routine:*\n\n',
+        'no_exam_schedule': '📅 No exam schedule has been set for you yet.',
+        'ask_roll_status': 'Please send your roll number to check your status:',
+        'roll_not_found': '❌ No data found for this roll number. Please provide a valid roll number.',
+        'no_result_yet': 'No exam results have been published yet.',
+        'exam_result_title': '📝 *Your Exam Results:*\n\n',
+        'status_not_set': 'No updates! Sending request to admin...',
+        'current_status_msg': 'Your current status: {st}',
+        'status_prompt_title': '✅ Roll: {roll} found. What would you like to view?',
+        'btn_exam_res': '📝 Exam Results',
+        'btn_latest_up': '🔄 Latest Updates',
     },
 }
 
@@ -580,20 +600,21 @@ def show_contact(message):
   )
 
 
-# === User Exam Schedule View Handler (Updated for Multiple Exams) ===
+# === 1. Exam Schedule View Handler (Language Supported) ===
 @bot.message_handler(
     func=lambda m: m.text
-    in [lang_dict['bn']['menu_exam'], lang_dict['en']['menu_exam']]
+    in [lang_dict['bn'].get('menu_exam'), lang_dict['en'].get('menu_exam')]
 )
 def user_exam_schedule(message):
     chat_id = message.chat.id
+    lang = users_db.get(chat_id, {}).get('lang', 'bn')
     exams = users_db.get(chat_id, {}).get('exams', [])
     
     if not exams:
-        bot.send_message(chat_id, "📅 আপনার এখনো কোনো পরীক্ষার শিডিউল সেট করা হয়নি।")
+        bot.send_message(chat_id, lang_dict[lang]['no_exam_schedule'])
         return
         
-    text = "📅 *আপনার পরীক্ষার রুটিন ও সময়সূচি:*\n\n"
+    text = lang_dict[lang]['exam_schedule_title']
     for i, ex in enumerate(exams, 1):
         text += f"{i}. *Subject:* {ex.get('sub')}\n"
         text += f"   *Date:* {ex.get('date')}\n"
@@ -602,47 +623,70 @@ def user_exam_schedule(message):
     bot.send_message(chat_id, text, parse_mode='Markdown')
 
 
-@bot.message_handler(
-    func=lambda m: m.text
-    in [lang_dict['bn']['menu_docs'], lang_dict['en']['menu_docs']]
-)
-def show_docs(message):
-  mk = types.InlineKeyboardMarkup(row_width=1)
-  mk.add(
-      types.InlineKeyboardButton(
-          '🇷🇺 রাশিয়া Self fund', callback_data='doc_self'
-      ),
-      types.InlineKeyboardButton(
-          '🇷🇺 Russia Scholarship', callback_data='doc_sch'
-      ),
-      types.InlineKeyboardButton(
-          '🏛️ Embassy Document', callback_data='doc_emb'
-      ),
-  )
-  bot.send_message(message.chat.id, 'Select Document Category:', reply_markup=mk)
+# === 2. Status Button & Roll Handler (Language Supported) ===
+@bot.message_handler(func=lambda m: m.text in [lang_dict['bn'].get('menu_status', '📊 Status'), lang_dict['en'].get('menu_status', '📊 Status')])
+def user_status_btn(message):
+    chat_id = message.chat.id
+    lang = users_db.get(chat_id, {}).get('lang', 'bn')
+    msg = bot.send_message(chat_id, lang_dict[lang]['ask_roll_status'])
+    bot.register_next_step_handler(msg, process_user_roll)
 
+def process_user_roll(message):
+    chat_id = message.chat.id
+    lang = users_db.get(chat_id, {}).get('lang', 'bn')
+    roll_input = message.text.strip()
+    target_uid = None
+    
+    for uid, data in users_db.items():
+        if str(data.get('roll')) == roll_input:
+            target_uid = uid
+            break
+            
+    if not target_uid:
+        bot.send_message(chat_id, lang_dict[lang]['roll_not_found'])
+        return
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith('doc_'))
-def doc_details(call):
-  if call.data == 'doc_self':
-    txt = (
-        '🇷🇺 *Self fund Documents:*\n1. Academy marksheet\n2. Passport\n3.'
-        ' Certificate Apostille\n4. AFFIDAVIT\n5. Photo 3.5x4.5 lab print'
+    mk = types.InlineKeyboardMarkup(row_width=1)
+    mk.add(
+        types.InlineKeyboardButton(lang_dict[lang]['btn_exam_res'], callback_data=f'chkres_{target_uid}'),
+        types.InlineKeyboardButton(lang_dict[lang]['btn_latest_up'], callback_data=f'chkstat_{target_uid}')
     )
-  elif call.data == 'doc_sch':
-    txt = (
-        '🇷🇺 *Scholarship Documents:*\n1. Academy marksheet\n2. Passport\n3.'
-        ' Phone Number\n4. Certificate Apostille\n5. Photo & Signature'
-    )
-  else:
-    txt = (
-        '🏛️ *Embassy Documents:*\n1. Minister letter\n2. Application Form\n3.'
-        ' Diploma\n4. Medical Certificate\n5. Marksheet + Apostille\n6.'
-        ' Passport Copy + Original'
-    )
-  bot.edit_message_text(
-      txt, call.message.chat.id, call.message.message_id, parse_mode='Markdown'
-  )
+    
+    prompt_text = lang_dict[lang]['status_prompt_title'].format(roll=roll_input)
+    bot.send_message(chat_id, prompt_text, reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('chkres_'))
+def view_exam_results(call):
+    uid = int(call.data.split('_')[1])
+    lang = users_db.get(uid, {}).get('lang', 'bn')
+    results = users_db[uid].get('results', {})
+    
+    if not results:
+        bot.answer_callback_query(call.id, lang_dict[lang]['no_result_yet'], show_alert=True)
+        return
+        
+    res_text = lang_dict[lang]['exam_result_title']
+    for sub, mark in results.items():
+        res_text += f"▪️ {sub}: {mark}\n"
+        
+    bot.edit_message_text(res_text, call.message.chat.id, call.message.message_id, parse_mode='Markdown')
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('chkstat_'))
+def view_user_status(call):
+    uid = int(call.data.split('_')[1])
+    lang = users_db.get(uid, {}).get('lang', 'bn')
+    st = users_db[uid].get('status_msg')
+    roll = users_db[uid].get('roll')
+    
+    if not st:
+        bot.answer_callback_query(call.id, lang_dict[lang]['status_not_set'], show_alert=True)
+        # Send request to Admin group
+        mk = types.InlineKeyboardMarkup()
+        mk.add(types.InlineKeyboardButton('Update Status', callback_data=f"stset_{uid}"))
+        bot.send_message(BACKUP_GROUP_ID, f"🔔 User Roll: {roll} wants to know their status but it's not set!", reply_markup=mk)
+    else:
+        txt = lang_dict[lang]['current_status_msg'].format(st=st)
+        bot.edit_message_text(txt, call.message.chat.id, call.message.message_id)
 
 
 @bot.message_handler(
