@@ -860,28 +860,66 @@ def exset_date(message):
 def exset_time(message):
   cid = message.chat.id
   temp_data[cid]['date'] = message.text
-  msg = bot.send_message(cid, "পরীক্ষার সময় দিন (HH:MM AM/PM):")
-  bot.register_next_step_handler(msg, exset_finish)
+  msg = bot.send_message(cid, "পরীক্ষার সময় দিন (যেমন- 03:30 PM):")
+  bot.register_next_step_handler(msg, exset_tz_choice)
 
-def exset_finish(message):
+def exset_tz_choice(message):
   cid = message.chat.id
+  temp_data[cid]['time'] = message.text
+  
+  # এডমিনের কাছে টাইমজোন (Dhaka বা Moscow) জানতে চাওয়া
+  mk = types.InlineKeyboardMarkup(row_width=2)
+  mk.add(
+      types.InlineKeyboardButton('🇧🇩 Dhaka Time', callback_data='extz_Dhaka Time'),
+      types.InlineKeyboardButton('🇷🇺 Moscow Time', callback_data='extz_Moscow Time')
+  )
+  bot.send_message(cid, "⏰ এই সময়টি কোন অঞ্চলের (Timezone) নির্বাচন করুন:", reply_markup=mk)
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith('extz_'))
+def exset_finish(call):
+  cid = call.message.chat.id
+  tz_choice = call.data.split('_', 1)[1]
+  
+  if cid not in temp_data or 'target_uid' not in temp_data[cid]:
+      bot.answer_callback_query(call.id, "সেশন মেয়াদোত্তীর্ণ হয়েছে। আবার চেষ্টা করুন।", show_alert=True)
+      return
+
   uid = temp_data[cid]['target_uid']
   sub = temp_data[cid]['sub']
   date_str = temp_data[cid]['date']
-  time_str = message.text
+  time_str = temp_data[cid]['time']
 
   try:
     import datetime
     exam_datetime = datetime.datetime.strptime(f'{date_str} {time_str}', '%d-%m-%Y %I:%M %p')
-    users_db[uid]['exam_sub'] = sub
-    users_db[uid]['exam_date'] = date_str
-    users_db[uid]['exam_time'] = time_str
-    users_db[uid]['exam_dt'] = exam_datetime
+    
+    # একাধিক সাবজেক্ট লিস্ট আকারে সেভ করার ব্যবস্থা
+    if 'exams' not in users_db[uid]:
+        users_db[uid]['exams'] = []
+        
+    users_db[uid]['exams'].append({
+        'sub': sub,
+        'date': date_str,
+        'time': time_str,
+        'tz': tz_choice,
+        'dt': exam_datetime
+    })
 
-    bot.send_message(cid, f"✅ {users_db[uid]['name']} এর এক্সাম শিডিউল সফলভাবে সেট করা হয়েছে!")
-    bot.send_message(uid, f'🔔 *New Exam Schedule Added!*\n\n{sub} exam on {date_str} at {time_str}', parse_mode='Markdown')
+    bot.edit_message_text(
+        f"✅ {users_db[uid]['name']} এর জন্য নতুন এক্সাম শিডিউল সফলভাবে যোগ করা হয়েছে!\n"
+        f"📚 সাবজেক্ট: {sub}\n📅 তারিখ: {date_str}\n⏰ সময়: {time_str} ({tz_choice})", 
+        cid, 
+        call.message.message_id
+    )
+    
+    # ইউজারকে নোটিফিকেশন পাঠানো
+    bot.send_message(
+        uid, 
+        f'🔔 *New Exam Schedule Added!*\n\n📚 Subject: {sub}\n📅 Date: {date_str}\n⏰ Time: {time_str} ({tz_choice})', 
+        parse_mode='Markdown'
+    )
   except Exception:
-    bot.send_message(cid, '❌ তারিখ বা সময়ের ফরমেট ভুল হয়েছে।')
+    bot.send_message(cid, '❌ তারিখ বা সময়ের ফরমেট ভুল হয়েছে। দয়া করে সঠিক ফরমেটে (DD-MM-YYYY এবং HH:MM AM/PM) দিন।')
 
 # === Notice System ===
 @bot.callback_query_handler(func=lambda c: c.data.startswith('notice_'))
