@@ -683,6 +683,7 @@ def qa_details(call):
 
     bot.answer_callback_query(call.id, ans, show_alert=True)
 
+
 # ==========================================
 # 8. ADMIN PANEL & NOTICES
 # ==========================================
